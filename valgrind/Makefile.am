@@ -12,7 +12,8 @@ TOOLS = \
 		massif \
 		dhat \
 		lackey \
-		none
+		none \
+		fplog
 
 EXP_TOOLS = \
 		exp-bbv

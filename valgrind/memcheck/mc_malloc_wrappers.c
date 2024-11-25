@@ -47,6 +47,59 @@
 
 #include "mc_include.h"
 
+// File descriptor for logging
+static Int log_fd = -1;
+
+// Helper to determine if an allocation might hold floating-point numbers
+static Bool is_fp_array(SizeT size) {
+    return size % sizeof(double) == 0 || size % sizeof(float) == 0;
+}
+
+// Custom logging function to replace fprintf
+static void log_message(const HChar* format, ...) 
+{
+    va_list vargs;
+    HChar buf[1024];
+    Int n;
+
+    va_start(vargs, format);
+    n = VG_(vsnprintf)(buf, sizeof(buf), format, vargs);
+    va_end(vargs);
+
+    if (n > 0) {
+        VG_(write)(log_fd, buf, n);
+    }
+}
+
+// Function to dump floating-point values
+static void dump_fp_values(void* addr, SizeT size) {
+   if (log_fd == -1) {
+      char filename[256];      
+      VG_(snprintf)(filename, sizeof(filename), "/tmp/allocations/%p.log", addr);
+      log_fd = VG_(fd_open)(filename, VKI_O_CREAT | VKI_O_WRONLY | VKI_O_TRUNC, VKI_S_IRUSR | VKI_S_IWUSR);
+   }
+
+   if (!addr || size == 0) {
+      log_message("Invalid memory address or size. Addr: %p, Size: %lu\n", addr, (ULong)size);
+      return;
+   }
+
+   SizeT count = size / sizeof(float);
+   float* data = (float*)addr;
+
+   log_message("Allocated FP array at %p with %lu elements:\n", addr, (ULong)count);
+   for (SizeT i = 0; i < count; i++) {
+      log_message("  [%lu] = %f\n", (ULong)i, data[i]);
+   }
+
+   if (log_fd >= 0) {
+      VG_(close)(log_fd);
+      log_fd = -1;
+   }
+}
+
+
+
 /*------------------------------------------------------------*/
 /*--- Defns                                                ---*/
 /*------------------------------------------------------------*/
@@ -403,11 +456,14 @@ void* MC_(new_block) ( ThreadId tid,
 
 void* MC_(malloc) ( ThreadId tid, SizeT n )
 {
+
    if (MC_(record_fishy_value_error)(tid, "malloc", "size", n)) {
       return NULL;
    } else {
-      return MC_(new_block) ( tid, 0, n, VG_(clo_alignment), 0U,
+      void* addr = MC_(new_block) ( tid, 0, n, VG_(clo_alignment), 0U,
          /*is_zeroed*/False, MC_AllocMalloc, MC_(malloc_list));
+
+      return addr;
    }
 }
 
@@ -518,6 +574,8 @@ void record_freemismatch_error (ThreadId tid, MC_Chunk* mc)
 
 void MC_(handle_free) ( ThreadId tid, Addr p, UInt rzB, MC_AllocKind kind )
 {
+   dump_fp_values(p, 150);
+
    MC_Chunk* mc;
 
    cmalloc_n_frees++;

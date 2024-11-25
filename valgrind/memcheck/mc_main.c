@@ -49,6 +49,10 @@
 #include "pub_tool_xtree.h"
 #include "pub_tool_xtmemory.h"
 
+#include "pub_tool_libcbase.h"    // For VG_(strlen) etc
+#include "pub_tool_libcfile.h"    // For VG_(open) etc
+
+
 #include "mc_include.h"
 #include "memcheck.h"   /* for client requests */
 
