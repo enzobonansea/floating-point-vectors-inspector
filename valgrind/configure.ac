@@ -5739,8 +5739,6 @@ AC_CONFIG_FILES([
    exp-bbv/tests/arm-linux/Makefile
    shared/Makefile
    solaris/Makefile
-   fplog/Makefile
-   fplog/tests/Makefile
 ])
 AC_CONFIG_FILES([coregrind/link_tool_exe_linux],
                 [chmod +x coregrind/link_tool_exe_linux])
