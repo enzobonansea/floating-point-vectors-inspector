@@ -48,8 +48,6 @@
 #include "pub_tool_xarray.h"
 #include "pub_tool_xtree.h"
 #include "pub_tool_xtmemory.h"
-
-#include "pub_tool_libcbase.h"    // For VG_(strlen) etc
 #include "pub_tool_libcfile.h"    // For VG_(open) etc
 
 
@@ -8553,6 +8551,76 @@ static Bool mc_mark_unaddressable_for_watchpoint (PointKind kind, Bool insert,
    return True;
 }
 
+static void log_heap_write(Addr addr, IRType data_type) {
+   Int size = sizeofIRType(data_type);
+   UChar value[32] = {0};
+
+   // Safely read memory using Valgrind's API
+   VG_(memcpy)(value, (void*)addr, size);
+
+   // Open log file
+   SysRes sres = VG_(open)("/tmp/heap_write.log", VKI_O_WRONLY | VKI_O_CREAT | VKI_O_APPEND, 0644);
+   if (!sr_isError(sres)) {
+      Int fd = sr_Res(sres);
+      char buf[256];
+      
+      // Write address and size to the log
+      Int len = VG_(snprintf)(buf, sizeof(buf), "Heap write at address: %p, size: %d bytes, bits: ", (void*)addr, size);
+      VG_(write)(fd, buf, len);
+
+      // Write bit representation of the value
+      for (int i = size - 1; i >= 0; i--) {
+         for (int j = 7; j >= 0; j--) {
+               len = VG_(snprintf)(buf, sizeof(buf), "%d", (value[i] >> j) & 1);
+               VG_(write)(fd, buf, len);
+         }
+      }
+
+      // Write newline to the log
+      len = VG_(snprintf)(buf, sizeof(buf), "\n");
+      VG_(write)(fd, buf, len);
+
+      // Close the file
+      VG_(close)(fd);
+   } else {
+      VG_(message)(Vg_UserMsg, "Error opening log file: /tmp/heap_write.log\n");
+   }
+}
+
+IRSB* mc_instrument(VgCallbackClosure* closure,
+                    IRSB* bb_in, 
+                    VexGuestLayout* layout,
+                    VexGuestExtents* vge,
+                    IRType gWordTy, 
+                    IRType hWordTy) {
+    IRSB* bb_out = deepCopyIRSBExceptStmts(bb_in);
+    IRStmt* stmt;
+
+    for (int i = 0; i < bb_in->stmts_used; i++) {
+         stmt = bb_in->stmts[i];
+
+         if (!stmt) continue;
+
+         addStmtToIRSB(bb_out, stmt);
+
+         if (stmt->tag != Ist_Store) continue;
+
+         IRExpr* data_expr = stmt->Ist.Store.data;
+         IRType data_type = typeOfIRExpr(bb_out->tyenv, data_expr);
+         if (data_expr != NULL && data_type != Ity_INVALID) {
+            IRDirty* di = unsafeIRDirty_0_N(
+               0, 
+               "log_heap_write", 
+               VG_(fnptr_to_fnentry)(&log_heap_write),
+               mkIRExprVec_2(stmt->Ist.Store.addr, mkIRExpr_HWord((HWord)data_type))
+            );
+            if (di != NULL) addStmtToIRSB(bb_out, IRStmt_Dirty(di));
+         }
+    }
+
+    return bb_out;
+}
+
 static void mc_pre_clo_init(void)
 {
    VG_(details_name)            ("Memcheck");
@@ -8564,7 +8632,7 @@ static void mc_pre_clo_init(void)
    VG_(details_avg_translation_sizeB) ( 640 );
 
    VG_(basic_tool_funcs)          (mc_post_clo_init,
-                                   MC_(instrument),
+                                   mc_instrument,
                                    mc_fini);
 
    VG_(needs_final_IR_tidy_pass)  ( MC_(final_tidy) );
