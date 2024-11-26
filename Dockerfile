@@ -16,5 +16,11 @@ RUN ./autogen.sh && ./configure --prefix=`pwd`/inst && make install
 COPY alloc.c /tmp/alloc.c
 RUN gcc -o /tmp/alloc /tmp/alloc.c
 
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get install -y blender
+RUN apt update && apt install -y alsa-utils
+COPY example.py /tmp/example.py
+
 # Init container
 CMD ["/bin/bash"]
+# inst/bin/valgrind --tool=memcheck --undef-value-errors=no blender -b -noaudio -P /tmp/example.py
