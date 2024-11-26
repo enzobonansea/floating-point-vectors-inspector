@@ -54,6 +54,98 @@
 #include "mc_include.h"
 #include "memcheck.h"   /* for client requests */
 
+
+#define LOG_BUFFER_SIZE (1024 * 1024)  // 1MB buffer
+#define MAX_ENTRY_SIZE 256
+
+static char log_buffer[1024 * 1024]; // 1MB buffer
+static Int buffer_pos = 0;
+static Int log_fd = -1;
+
+static void flush_log_buffer(void) {
+   if (buffer_pos > 0) {
+      VG_(write)(log_fd, log_buffer, buffer_pos);
+      buffer_pos = 0;
+   }
+}
+
+static void log_heap_write(Addr addr, IRType data_type) {
+   if (data_type == Ity_I1) return;
+   if (data_type == Ity_I8) return;
+   if (data_type == Ity_I16) return;
+   if (data_type == Ity_I32) return;
+   if (data_type == Ity_I64) return;
+
+   // Lazy initialization of log file
+   if (log_fd == -1) {
+      SysRes sres = VG_(open)("/tmp/heap_write.log", 
+                               VKI_O_WRONLY | VKI_O_CREAT | VKI_O_APPEND, 
+                               0644);
+      if (sr_isError(sres)) {
+         VG_(message)(Vg_UserMsg, "Error opening log file\n");
+         return;
+      }
+      log_fd = sr_Res(sres);
+   }
+
+   // Prepare log entry
+   Int size = sizeofIRType(data_type);
+   char entry[MAX_ENTRY_SIZE];
+   Int len = VG_(snprintf)(entry, sizeof(entry), 
+                            "Heap write at %p, size %d, type %d: ", 
+                            (void*)addr, size, data_type);
+
+   // Check if we need to flush the buffer
+   if (buffer_pos + len >= LOG_BUFFER_SIZE) {
+      flush_log_buffer();
+   }
+
+   // Copy entry to buffer
+   VG_(memcpy)(log_buffer + buffer_pos, entry, len);
+   buffer_pos += len;
+
+   // Optionally add bit representation of the value
+   UChar value[32] = {0};
+   VG_(memcpy)(value, (void*)addr, size);
+
+   for (Int i = size - 1; i >= 0; i--) {
+      for (Int j = 7; j >= 0; j--) {
+         char bit_entry[2];
+         Int bit_len = VG_(snprintf)(bit_entry, sizeof(bit_entry), 
+                                     "%d", (value[i] >> j) & 1);
+
+         // Ensure buffer doesn't overflow
+         if (buffer_pos + bit_len >= LOG_BUFFER_SIZE) {
+            flush_log_buffer();
+         }
+
+         VG_(memcpy)(log_buffer + buffer_pos, bit_entry, bit_len);
+         buffer_pos += bit_len;
+      }
+   }
+
+   // Add newline
+   if (buffer_pos + 1 >= LOG_BUFFER_SIZE) {
+      flush_log_buffer();
+   }
+   log_buffer[buffer_pos++] = '\n';
+
+   // Periodically flush to reduce memory usage
+   if (buffer_pos > LOG_BUFFER_SIZE * 0.9) {
+      flush_log_buffer();
+   }
+}
+
+// Optional: Add a cleanup function to flush remaining buffer
+static void cleanup_log_buffer(void) {
+   if (log_fd != -1) {
+      flush_log_buffer();
+      VG_(close)(log_fd);
+      log_fd = -1;
+   }
+}
+
+
 /* Set to 1 to do a little more sanity checking */
 #define VG_DEBUG_MEMORY 0
 
@@ -8549,42 +8641,6 @@ static Bool mc_mark_unaddressable_for_watchpoint (PointKind kind, Bool insert,
    else
       MC_(make_mem_defined)  (addr, len);
    return True;
-}
-
-static void log_heap_write(Addr addr, IRType data_type) {
-   Int size = sizeofIRType(data_type);
-   UChar value[32] = {0};
-
-   // Safely read memory using Valgrind's API
-   VG_(memcpy)(value, (void*)addr, size);
-
-   // Open log file
-   SysRes sres = VG_(open)("/tmp/heap_write.log", VKI_O_WRONLY | VKI_O_CREAT | VKI_O_APPEND, 0644);
-   if (!sr_isError(sres)) {
-      Int fd = sr_Res(sres);
-      char buf[256];
-      
-      // Write address and size to the log
-      Int len = VG_(snprintf)(buf, sizeof(buf), "Heap write at address: %p, size: %d bytes, bits: ", (void*)addr, size);
-      VG_(write)(fd, buf, len);
-
-      // Write bit representation of the value
-      for (int i = size - 1; i >= 0; i--) {
-         for (int j = 7; j >= 0; j--) {
-               len = VG_(snprintf)(buf, sizeof(buf), "%d", (value[i] >> j) & 1);
-               VG_(write)(fd, buf, len);
-         }
-      }
-
-      // Write newline to the log
-      len = VG_(snprintf)(buf, sizeof(buf), "\n");
-      VG_(write)(fd, buf, len);
-
-      // Close the file
-      VG_(close)(fd);
-   } else {
-      VG_(message)(Vg_UserMsg, "Error opening log file: /tmp/heap_write.log\n");
-   }
 }
 
 IRSB* mc_instrument(VgCallbackClosure* closure,
