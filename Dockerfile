@@ -1,6 +1,7 @@
 # Setup
 FROM ubuntu:20.04
-RUN apt-get update && apt-get install -y build-essential wget gcc make libncurses5-dev libncursesw5-dev autotools-dev automake autoconf libtool nano libc6-dbg grep
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y build-essential wget gcc make libncurses5-dev libncursesw5-dev autotools-dev automake autoconf libtool nano libc6-dbg grep blender alsa-utils
 
 # Prepare Valgrind source
 ADD valgrind /opt/valgrind
@@ -12,15 +13,12 @@ RUN sed -i -e 's/\r$//' autogen.sh && find . -type f -exec sed -i -e 's/\r$//' {
 # Configure and build Valgrind
 RUN ./autogen.sh && ./configure --prefix=`pwd`/inst && make install
 
-# Test program
+# Test programs
 COPY alloc.c /tmp/alloc.c
 RUN gcc -o /tmp/alloc /tmp/alloc.c
-
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get install -y blender
-RUN apt update && apt install -y alsa-utils
 COPY example.py /tmp/example.py
 
 # Init container
 CMD ["/bin/bash"]
 # inst/bin/valgrind --tool=memcheck --undef-value-errors=no blender -b -noaudio -P /tmp/example.py
+# tail -f /var/log/syslog
