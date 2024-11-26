@@ -1,24 +1,20 @@
+# Setup
 FROM ubuntu:20.04
+RUN apt-get update && apt-get install -y build-essential wget gcc make libncurses5-dev libncursesw5-dev autotools-dev automake autoconf libtool nano libc6-dbg grep
 
-# Prevent tzdata from prompting for user input
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Install necessary tools and dependencies, including Valgrind
-RUN apt-get update && apt-get install -y \
-    build-essential wget gcc make tzdata \
-    libncurses5-dev libncursesw5-dev autotools-dev automake autoconf libtool nano libc6-dbg
-
-# Copy your plugin source code into the container
+# Prepare Valgrind source
 ADD valgrind /opt/valgrind
-
-# Set up the working directory
 WORKDIR /opt/valgrind
+
+# Normalize line endings
+RUN sed -i -e 's/\r$//' autogen.sh && find . -type f -exec sed -i -e 's/\r$//' {} \;
+
+# Configure and build Valgrind
+RUN ./autogen.sh && ./configure --prefix=`pwd`/inst && make install
+
+# Test program
 COPY alloc.c /tmp/alloc.c
 RUN gcc -o /tmp/alloc /tmp/alloc.c
 
-RUN sed -i -e 's/\r$//' autogen.sh
-RUN find . -type f -exec sed -i -e 's/\r$//' {} \;
-RUN ./autogen.sh
-RUN ./configure --prefix=`pwd`/inst
-RUN make install
+# Init container
 CMD ["/bin/bash"]
