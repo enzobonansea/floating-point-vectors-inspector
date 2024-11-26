@@ -21,5 +21,4 @@ RUN find . -type f -exec sed -i -e 's/\r$//' {} \;
 RUN ./autogen.sh
 RUN ./configure --prefix=`pwd`/inst
 RUN make install
-RUN mkdir /tmp/allocations
 CMD ["/bin/bash"]
