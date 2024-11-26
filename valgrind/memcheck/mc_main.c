@@ -92,7 +92,7 @@ static void log_heap_write(Addr addr, IRType data_type) {
    Int size = sizeofIRType(data_type);
    char entry[MAX_ENTRY_SIZE];
    Int len = VG_(snprintf)(entry, sizeof(entry), 
-                            "Heap write at %p, size %d, type %d: ", 
+                            "%p %d %d ", 
                             (void*)addr, size, data_type);
 
    // Check if we need to flush the buffer
