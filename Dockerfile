@@ -19,6 +19,6 @@ RUN gcc -o /tmp/alloc /tmp/alloc.c
 COPY example.py /tmp/example.py
 
 # Init container
-CMD ["/bin/bash"]
-# inst/bin/valgrind --tool=memcheck --undef-value-errors=no blender -b -noaudio -P /tmp/example.py
-# tail -f /var/log/syslog
+COPY menu.sh /usr/local/bin/menu.sh
+RUN chmod +x /usr/local/bin/menu.sh
+CMD ["/usr/local/bin/menu.sh"]
