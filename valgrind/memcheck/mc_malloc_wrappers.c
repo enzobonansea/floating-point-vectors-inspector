@@ -401,7 +401,16 @@ void* MC_(new_block) ( ThreadId tid,
       MC_(make_mem_undefined_w_otag)( p, szB, ecu | MC_OKIND_HEAP );
    }
 
-   return (void*)p;
+   void* addr = (void*)p;
+   SysRes sres = VG_(open)("/tmp/malloc.log", VKI_O_WRONLY | VKI_O_CREAT | VKI_O_APPEND, 0644);
+   if (!sr_isError(sres)) {
+      Int fd = sr_Res(sres);
+      char buf[256];
+      Int len = VG_(snprintf)(buf, sizeof(buf), "%p %lu\n", addr, szB);
+      VG_(write)(fd, buf, len);
+   }
+
+   return addr;
 }
 
 void* MC_(malloc) ( ThreadId tid, SizeT n )
@@ -409,18 +418,8 @@ void* MC_(malloc) ( ThreadId tid, SizeT n )
    if (MC_(record_fishy_value_error)(tid, "malloc", "size", n)) {
       return NULL;
    } else {
-      void* addr = MC_(new_block) ( tid, 0, n, VG_(clo_alignment), 0U,
+      return MC_(new_block)( tid, 0, n, VG_(clo_alignment), 0U,
          /*is_zeroed*/False, MC_AllocMalloc, MC_(malloc_list));
-
-      SysRes sres = VG_(open)("/tmp/malloc.log", VKI_O_WRONLY | VKI_O_CREAT | VKI_O_APPEND, 0644);
-      if (!sr_isError(sres)) {
-         Int fd = sr_Res(sres);
-         char buf[256];
-         Int len = VG_(snprintf)(buf, sizeof(buf), "%p %lu\n", addr, n);
-         VG_(write)(fd, buf, len);
-      }
-
-      return addr;
    }
 }
 
