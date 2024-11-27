@@ -13,7 +13,7 @@ while true; do
             
             echo ""
             echo ""
-            echo "Check /tmp/malloc.log and /tmp/heap_write.log"
+            echo "Move /tmp/malloc.log and /tmp/heap_write.log to your local machine and analyze them following results\blender\test1.ipynb"
             /bin/bash
             ;;
         2)
