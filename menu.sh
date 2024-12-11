@@ -19,7 +19,7 @@ while true; do
             ;;
         2)
             read -p "Which SPEC2017 app do you want to test? " user_input
-            echo "Running Valgrind on the SPEC2017 app : $user_input"
+            echo "Running Valgrind on the SPEC2017 app $user_input"
             cd /usr/cpu2017
             source shrc
             cd /opt/valgrind
