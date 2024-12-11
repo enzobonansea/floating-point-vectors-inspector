@@ -1,7 +1,7 @@
 # Setup
 FROM ubuntu:20.04
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y build-essential wget gcc make libncurses5-dev libncursesw5-dev autotools-dev automake autoconf libtool nano libc6-dbg grep blender alsa-utils
+RUN apt-get update && apt-get install -y build-essential wget gcc make libncurses5-dev libncursesw5-dev autotools-dev automake autoconf libtool nano libc6-dbg grep blender alsa-utils libarchive-tools
 
 # Prepare Valgrind source
 ADD valgrind /opt/valgrind
@@ -17,6 +17,13 @@ RUN ./autogen.sh && ./configure --prefix=`pwd`/inst && make install
 COPY alloc.c /tmp/alloc.c
 RUN gcc -o /tmp/alloc /tmp/alloc.c
 COPY example.py /tmp/example.py
+
+# SPEC
+COPY cpu2017-1.1.9.iso /opt/spec/cpu2017.iso
+RUN mkdir -p /usr/cpu2017 \
+    && bsdtar -C /usr/cpu2017 -xf /opt/spec/cpu2017.iso \
+    && echo -e "/usr/cpu2017\nyes" | /usr/cpu2017/install.sh \
+    && rm /opt/spec/cpu2017.iso
 
 # Init container
 COPY menu.sh /usr/local/bin/menu.sh
