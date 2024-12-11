@@ -20,5 +20,6 @@ COPY example.py /tmp/example.py
 
 # Init container
 COPY menu.sh /usr/local/bin/menu.sh
+RUN sed -i 's/\r$//' /usr/local/bin/menu.sh
 RUN chmod +x /usr/local/bin/menu.sh
 CMD ["/usr/local/bin/menu.sh"]
