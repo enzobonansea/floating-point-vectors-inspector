@@ -70,11 +70,11 @@ static void flush_log_buffer(void) {
 }
 
 static void log_heap_write(Addr addr, IRType data_type) {
-   if (data_type == Ity_I1) return;
-   if (data_type == Ity_I8) return;
-   if (data_type == Ity_I16) return;
-   if (data_type == Ity_I32) return;
-   if (data_type == Ity_I64) return;
+   // if (data_type == Ity_I1) return;
+   // if (data_type == Ity_I8) return;
+   // if (data_type == Ity_I16) return;
+   // if (data_type == Ity_I32) return;
+   // if (data_type == Ity_I64) return;
 
    // Lazy initialization of log file
    if (log_fd == -1) {
@@ -83,6 +83,7 @@ static void log_heap_write(Addr addr, IRType data_type) {
                                0644);
       if (sr_isError(sres)) {
          VG_(message)(Vg_UserMsg, "Error opening log file\n");
+         log_fd = -1;
          return;
       }
       log_fd = sr_Res(sres);
