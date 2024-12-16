@@ -4,8 +4,9 @@ while true; do
     echo "Select an option:"
     echo "1. Test blender"
     echo "2. Test SPEC2017"
-    echo "3. Exit"
-    read -p "Enter your choice (1-3): " choice
+    echo "3. Run bash"
+    echo "4. Exit"
+    read -p "Enter your choice (1-4): " choice
 
     case $choice in
         1)
@@ -23,9 +24,13 @@ while true; do
             cd /usr/cpu2017
             source shrc
             cd /opt/valgrind
-            inst/bin/valgrind --tool=memcheck runcpu "$user_input"
+            inst/bin/valgrind --tool=memcheck --undef-value-errors=no runcpu "$user_input"
             ;;
         3)
+            bash
+            exit 0
+            ;;
+        4)
             echo "Exiting..."
             exit 0
             ;;
