@@ -25,6 +25,11 @@ while true; do
             source shrc
             cd /opt/valgrind
             inst/bin/valgrind --tool=memcheck --undef-value-errors=no runcpu "$user_input"
+
+            echo ""
+            echo ""
+            echo "Move /tmp/malloc.log and /tmp/heap_write.log to your local machine and analyze them following results\blender\test1.ipynb"
+            /bin/bash
             ;;
         3)
             bash
