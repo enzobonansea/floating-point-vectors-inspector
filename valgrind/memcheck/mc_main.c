@@ -69,9 +69,7 @@ static void flush_log_buffer(void) {
    }
 }
 
-static void log_heap_write(Addr addr, IRType data_type) {
-
-   // Lazy initialization of log file
+static void log_heap_write(Addr addr, HWord type_info) {
    if (log_fd == -1) {
       SysRes sres = VG_(open)("/tmp/heap_write.log", 
                                VKI_O_WRONLY | VKI_O_CREAT | VKI_O_APPEND, 
@@ -84,23 +82,37 @@ static void log_heap_write(Addr addr, IRType data_type) {
       log_fd = sr_Res(sres);
    }
 
-   // Prepare log entry
+   IRType data_type = (IRType)(type_info & 0xFFFFFFFF);
+   Bool is_256bit = (type_info & (1ULL << 33)) != 0;
+   Int vec_elem_type = (type_info >> 32) & 0x1;
+   
    Int size = sizeofIRType(data_type);
    char entry[MAX_ENTRY_SIZE];
-   Int len = VG_(snprintf)(entry, sizeof(entry), 
-                            "%p %d %d ", 
-                            (void*)addr, size, data_type);
+   Int len;
+   
+   if (data_type == Ity_V128 || data_type == Ity_V256) {
+      const char* vec_type = vec_elem_type ? "F64" : "F32";
+      Int num_elems = is_256bit ? (vec_elem_type ? 4 : 8) : (vec_elem_type ? 2 : 4);
+      len = VG_(snprintf)(entry, sizeof(entry), 
+                         "%p %d %s[%dx%s] ", 
+                         (void*)addr, size, 
+                         is_256bit ? "V256" : "V128",
+                         num_elems, vec_type);
+   } else if (data_type == Ity_F128 || data_type == Ity_D128 || data_type == Ity_D64 || data_type == Ity_D32 || data_type == Ity_F64 || data_type == Ity_F32 || data_type == Ity_F16) {
+      len = VG_(snprintf)(entry, sizeof(entry), 
+                         "%p %d %d ", 
+                         (void*)addr, size, data_type);
+   } else {
+      return;
+   }
 
-   // Check if we need to flush the buffer
    if (buffer_pos + len >= LOG_BUFFER_SIZE) {
       flush_log_buffer();
    }
 
-   // Copy entry to buffer
    VG_(memcpy)(log_buffer + buffer_pos, entry, len);
    buffer_pos += len;
 
-   // Optionally add bit representation of the value
    UChar value[32] = {0};
    VG_(memcpy)(value, (void*)addr, size);
 
@@ -108,9 +120,8 @@ static void log_heap_write(Addr addr, IRType data_type) {
       for (Int j = 7; j >= 0; j--) {
          char bit_entry[2];
          Int bit_len = VG_(snprintf)(bit_entry, sizeof(bit_entry), 
-                                     "%d", (value[i] >> j) & 1);
+                                    "%d", (value[i] >> j) & 1);
 
-         // Ensure buffer doesn't overflow
          if (buffer_pos + bit_len >= LOG_BUFFER_SIZE) {
             flush_log_buffer();
          }
@@ -120,13 +131,11 @@ static void log_heap_write(Addr addr, IRType data_type) {
       }
    }
 
-   // Add newline
    if (buffer_pos + 1 >= LOG_BUFFER_SIZE) {
       flush_log_buffer();
    }
    log_buffer[buffer_pos++] = '\n';
 
-   // Periodically flush to reduce memory usage
    if (buffer_pos > LOG_BUFFER_SIZE * 0.9) {
       flush_log_buffer();
    }
@@ -8650,26 +8659,52 @@ IRSB* mc_instrument(VgCallbackClosure* closure,
 
     for (int i = 0; i < bb_in->stmts_used; i++) {
          stmt = bb_in->stmts[i];
-
          if (!stmt) continue;
-
          addStmtToIRSB(bb_out, stmt);
-
          if (stmt->tag != Ist_Store) continue;
 
          IRExpr* data_expr = stmt->Ist.Store.data;
          IRType data_type = typeOfIRExpr(bb_out->tyenv, data_expr);
+         
          if (data_expr != NULL && data_type != Ity_INVALID) {
+            HWord type_info = (HWord)data_type;
+            
+            if (data_type == Ity_V128 || data_type == Ity_V256) {
+                if (data_expr->tag == Iex_Get) {
+                    IRType elem_type = data_expr->Iex.Get.ty;
+                    ULong size_flag = (data_type == Ity_V256) ? (1ULL << 33) : 0;
+                    
+                    // Map element type to a 6-bit identifier (bits 32-37)
+                    ULong type_id;
+                    switch(elem_type) {
+                        case Ity_I1:  continue;
+                        case Ity_I8:  continue;
+                        case Ity_I16: continue;
+                        case Ity_I32: continue;
+                        case Ity_I64: continue;
+                        case Ity_I128: continue;
+                        case Ity_F16: type_id = 7; break;
+                        case Ity_F32: type_id = 8; break;
+                        case Ity_F64: type_id = 9; break;
+                        case Ity_D32: type_id = 10; break;
+                        case Ity_D64: type_id = 11; break;
+                        case Ity_D128: type_id = 12; break;
+                        case Ity_F128: type_id = 13; break;
+                        default: continue;
+                    }
+                    type_info |= size_flag | (type_id << 32);
+                }
+            }
+            
             IRDirty* di = unsafeIRDirty_0_N(
                0, 
                "log_heap_write", 
                VG_(fnptr_to_fnentry)(&log_heap_write),
-               mkIRExprVec_2(stmt->Ist.Store.addr, mkIRExpr_HWord((HWord)data_type))
+               mkIRExprVec_2(stmt->Ist.Store.addr, mkIRExpr_HWord(type_info))
             );
             if (di != NULL) addStmtToIRSB(bb_out, IRStmt_Dirty(di));
          }
     }
-
     return bb_out;
 }
 
