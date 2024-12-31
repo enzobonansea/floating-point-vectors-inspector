@@ -61,6 +61,7 @@
 static char log_buffer[1024 * 1024]; // 1MB buffer
 static Int buffer_pos = 0;
 static Int log_fd = -1;
+static Int stmt_n = 0;
 
 static void flush_log_buffer(void) {
    if (buffer_pos > 0) {
@@ -69,7 +70,17 @@ static void flush_log_buffer(void) {
    }
 }
 
-static void log_heap_write(Addr addr, IRType data_type) {
+static void log_heap_write(Addr addr, IRType data_type, IREndness end, Int stmt_n) {
+   Int size = sizeofIRType(data_type);
+   if (data_type >= Ity_F16 && data_type <= Ity_V256){
+         VG_(printf)("Allocated buffer at %p, type: %d\n", addr, data_type);
+         void* ptr = (void*)addr;
+         unsigned char* byte_ptr = (unsigned char*)ptr;
+         for (Int i = 0; i < size; i++) {
+            VG_(printf)("Byte %zu: %02x\n", i, byte_ptr[i]);
+         }
+   }
+   return;
 
    // Lazy initialization of log file
    if (log_fd == -1) {
@@ -84,12 +95,13 @@ static void log_heap_write(Addr addr, IRType data_type) {
       log_fd = sr_Res(sres);
    }
 
+   if (data_type < Ity_F16) return;
+
    // Prepare log entry
-   Int size = sizeofIRType(data_type);
    char entry[MAX_ENTRY_SIZE];
    Int len = VG_(snprintf)(entry, sizeof(entry), 
-                            "%p %d %d ", 
-                            (void*)addr, size, data_type);
+                            "%d %p %d %d ", 
+                            stmt_n, (void*)addr, size, data_type);
 
    // Check if we need to flush the buffer
    if (buffer_pos + len >= LOG_BUFFER_SIZE) {
@@ -104,19 +116,18 @@ static void log_heap_write(Addr addr, IRType data_type) {
    UChar value[32] = {0};
    VG_(memcpy)(value, (void*)addr, size);
 
-   for (Int i = size - 1; i >= 0; i--) {
+   // Handle endianess
+   for (Int i = (end == Iend_BE ? size - 1 : 0);
+        (end == Iend_BE ? i >= 0 : i < size);
+        (end == Iend_BE ? i-- : i++)) {
       for (Int j = 7; j >= 0; j--) {
-         char bit_entry[2];
-         Int bit_len = VG_(snprintf)(bit_entry, sizeof(bit_entry), 
-                                     "%d", (value[i] >> j) & 1);
-
-         // Ensure buffer doesn't overflow
-         if (buffer_pos + bit_len >= LOG_BUFFER_SIZE) {
+         // Ensure buffer doesn't overflow before appending
+         if (buffer_pos + 1 >= LOG_BUFFER_SIZE) {
             flush_log_buffer();
          }
 
-         VG_(memcpy)(log_buffer + buffer_pos, bit_entry, bit_len);
-         buffer_pos += bit_len;
+         // Append the bit directly
+         log_buffer[buffer_pos++] = ((value[i] >> j) & 1) ? '1' : '0';
       }
    }
 
@@ -131,6 +142,7 @@ static void log_heap_write(Addr addr, IRType data_type) {
       flush_log_buffer();
    }
 }
+
 
 // Optional: Add a cleanup function to flush remaining buffer
 static void cleanup_log_buffer(void) {
@@ -8639,39 +8651,132 @@ static Bool mc_mark_unaddressable_for_watchpoint (PointKind kind, Bool insert,
    return True;
 }
 
-IRSB* mc_instrument(VgCallbackClosure* closure,
-                    IRSB* bb_in, 
-                    VexGuestLayout* layout,
-                    VexGuestExtents* vge,
-                    IRType gWordTy, 
-                    IRType hWordTy) {
-    IRSB* bb_out = deepCopyIRSBExceptStmts(bb_in);
-    IRStmt* stmt;
+static void log_store(Addr addr) {
+   VG_(printf)("%p\n", addr);
 
-    for (int i = 0; i < bb_in->stmts_used; i++) {
-         stmt = bb_in->stmts[i];
-
-         if (!stmt) continue;
-
-         addStmtToIRSB(bb_out, stmt);
-
-         if (stmt->tag != Ist_Store) continue;
-
-         IRExpr* data_expr = stmt->Ist.Store.data;
-         IRType data_type = typeOfIRExpr(bb_out->tyenv, data_expr);
-         if (data_expr != NULL && data_type != Ity_INVALID) {
-            IRDirty* di = unsafeIRDirty_0_N(
-               0, 
-               "log_heap_write", 
-               VG_(fnptr_to_fnentry)(&log_heap_write),
-               mkIRExprVec_2(stmt->Ist.Store.addr, mkIRExpr_HWord((HWord)data_type))
-            );
-            if (di != NULL) addStmtToIRSB(bb_out, IRStmt_Dirty(di));
-         }
-    }
-
-    return bb_out;
+   return;
 }
+
+void log_memory_access(Addr addr, HWord value) {
+   VG_(printf)("Memory STORE at 0x%lx, value: 0x%lx\n", addr, value);
+}
+
+IRSB* mc_instrument(VgCallbackClosure* closure,
+                   IRSB* bb_in,
+                   VexGuestLayout* layout,
+                   VexGuestExtents* vge,
+                   IRType gWordTy,
+                   IRType hWordTy) {
+   ppIRSB(bb_in);
+   IRSB* bb_out = deepCopyIRSBExceptStmts(bb_in);
+   IRTemp addr_tmp, data_tmp;
+   
+   for (Int i = 0; i < bb_in->stmts_used; i++) {
+      IRStmt* stmt = bb_in->stmts[i];
+      if (!stmt) continue;
+
+      if (stmt->tag == Ist_Store) {
+         IRExpr* data64 = stmt->Ist.Store.data;
+         IRExpr* addr64 = stmt->Ist.Store.addr;
+         if (typeOfIRExpr(bb_in->tyenv, data64) == Ity_I32) {
+            if (data64->tag == Iex_RdTmp) {
+               IRTemp target_tmp = data64->Iex.RdTmp.tmp;
+               for (Int j = 0; j < i; j++) {
+                     IRStmt* prev = bb_in->stmts[j];
+                     if (prev->tag == Ist_WrTmp && prev->Ist.WrTmp.tmp == target_tmp) {
+                        VG_(printf)("Definition of target_tmp: tag=%d\n", prev->Ist.WrTmp.data->tag);
+                        if (prev->Ist.WrTmp.data->tag == Iex_Unop) {
+                           VG_(printf)("Unop type: %d\n", prev->Ist.WrTmp.data->Iex.Unop.op);
+                        }
+                        // TODO: print binop and the rest
+                     }
+               }
+            }
+
+            addr_tmp = newIRTemp(bb_out->tyenv, Ity_I64);
+            data_tmp = newIRTemp(bb_out->tyenv, Ity_I64);
+
+            addStmtToIRSB(bb_out, IRStmt_WrTmp(addr_tmp, addr64));
+            addStmtToIRSB(bb_out, IRStmt_WrTmp(data_tmp, IRExpr_Unop(Iop_32Uto64, data64)));
+            
+            IRDirty* dirty = unsafeIRDirty_0_N(
+                  0,
+                  "log_memory_access",
+                  VG_(fnptr_to_fnentry)(log_memory_access),
+                  mkIRExprVec_2(IRExpr_RdTmp(addr_tmp), IRExpr_RdTmp(data_tmp))
+            );
+            addStmtToIRSB(bb_out, IRStmt_Dirty(dirty));
+         }
+      }
+       
+       addStmtToIRSB(bb_out, stmt);
+   }
+   
+   return bb_out;
+}
+//     IRSB* bb_out = deepCopyIRSBExceptStmts(bb_in);
+//     IRStmt* stmt;
+
+//     for (int i = 0; i < bb_in->stmts_used; i++) {
+//          stmt = bb_in->stmts[i];
+
+//          if (!stmt) continue;
+
+//          addStmtToIRSB(bb_out, stmt);
+//          // vex_printf("stmt:%d__", stmt_n); 
+//          stmt_n++;
+//          // ppIRStmt(stmt);
+//          // vex_printf("\n"); 
+
+//          if (stmt->tag == Ist_Store) {
+//             IRDirty* di = unsafeIRDirty_0_N(
+//                0, 
+//                "log_store", 
+//                VG_(fnptr_to_fnentry)(&log_store),
+//                mkIRExprVec_1(stmt->Ist.Store.addr)
+//             );
+//             if (di != NULL) addStmtToIRSB(bb_out, IRStmt_Dirty(di));
+//          }
+
+//          if (stmt->tag == Ist_StoreG) {
+//             // IRExpr* data_expr = stmt->Ist.StoreG.details->data;
+//             // IRType data_type = typeOfIRExpr(bb_out->tyenv, data_expr);
+//             // if (data_expr != NULL && data_type != Ity_INVALID) {
+//             //    IRDirty* di = unsafeIRDirty_0_N(
+//             //       0, 
+//             //       "log_heap_write", 
+//             //       VG_(fnptr_to_fnentry)(&log_heap_write),
+//             //       mkIRExprVec_4(
+//             //          stmt->Ist.StoreG.details->addr, 
+//             //          mkIRExpr_HWord((HWord)data_type),
+//             //          mkIRExpr_HWord((HWord)stmt->Ist.StoreG.details->end), 
+//             //          mkIRExpr_HWord((HWord)stmt_n))
+//             //    );
+//             //    if (di != NULL) addStmtToIRSB(bb_out, IRStmt_Dirty(di));
+//             // }
+//          }
+
+//          if (stmt->tag == Ist_WrTmp) {
+//             // IRExpr* data_expr = stmt->Ist.WrTmp.data;
+//             // IRType data_type = typeOfIRExpr(bb_out->tyenv, data_expr);
+//             // if (data_expr != NULL && data_type != Ity_INVALID) {
+//             //    IRDirty* di = unsafeIRDirty_0_N(
+//             //       0, 
+//             //       "log_heap_write", 
+//             //       VG_(fnptr_to_fnentry)(&log_heap_write),
+//             //       mkIRExprVec_4(
+//             //          NULL, 
+//             //          mkIRExpr_HWord((HWord)data_type),
+//             //          mkIRExpr_HWord((HWord)NULL), 
+//             //          mkIRExpr_HWord((HWord)stmt_n))
+//             //    );
+//             //    if (di != NULL) addStmtToIRSB(bb_out, IRStmt_Dirty(di));
+//             // }
+//          }
+//     }
+
+//     return bb_out;
+// }
 
 static void mc_pre_clo_init(void)
 {
