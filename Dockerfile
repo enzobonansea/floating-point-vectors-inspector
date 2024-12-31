@@ -12,7 +12,7 @@ RUN mkdir -p /usr/cpu2017 \
 
 # Add test programs
 COPY alloc.c /tmp/alloc.c
-RUN gcc -o /tmp/alloc /tmp/alloc.c
+RUN gcc -O0 -o  /tmp/alloc /tmp/alloc.c
 COPY example.py /tmp/example.py
 
 # Install custom valgrind
