@@ -8658,7 +8658,8 @@ static void log_store(Addr addr) {
 }
 
 void log_memory_access(Addr addr, HWord value) {
-   VG_(printf)("Memory STORE at 0x%lx, value: 0x%lx\n", addr, value);
+   VG_(printf)("STORE at 0x%lx, value: 0x%lx, context: ", addr, value);
+   MC_(pp_describe_addr)(VG_(current_DiEpoch)(), (Addr)addr);
 }
 
 IRSB* mc_instrument(VgCallbackClosure* closure,
@@ -8679,20 +8680,6 @@ IRSB* mc_instrument(VgCallbackClosure* closure,
          IRExpr* data64 = stmt->Ist.Store.data;
          IRExpr* addr64 = stmt->Ist.Store.addr;
          if (typeOfIRExpr(bb_in->tyenv, data64) == Ity_I32) {
-            if (data64->tag == Iex_RdTmp) {
-               IRTemp target_tmp = data64->Iex.RdTmp.tmp;
-               for (Int j = 0; j < i; j++) {
-                     IRStmt* prev = bb_in->stmts[j];
-                     if (prev->tag == Ist_WrTmp && prev->Ist.WrTmp.tmp == target_tmp) {
-                        VG_(printf)("Definition of target_tmp: tag=%d\n", prev->Ist.WrTmp.data->tag);
-                        if (prev->Ist.WrTmp.data->tag == Iex_Unop) {
-                           VG_(printf)("Unop type: %d\n", prev->Ist.WrTmp.data->Iex.Unop.op);
-                        }
-                        // TODO: print binop and the rest
-                     }
-               }
-            }
-
             addr_tmp = newIRTemp(bb_out->tyenv, Ity_I64);
             data_tmp = newIRTemp(bb_out->tyenv, Ity_I64);
 
