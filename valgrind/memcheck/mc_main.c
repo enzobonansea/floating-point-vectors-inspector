@@ -49,6 +49,8 @@
 #include "pub_tool_xtree.h"
 #include "pub_tool_xtmemory.h"
 #include "pub_tool_libcfile.h"    // For VG_(open) etc
+#include "pub_tool_addrinfo.h"
+#include "pub_tool_execontext.h"
 
 
 #include "mc_include.h"
@@ -8651,15 +8653,19 @@ static Bool mc_mark_unaddressable_for_watchpoint (PointKind kind, Bool insert,
    return True;
 }
 
-static void log_store(Addr addr) {
-   VG_(printf)("%p\n", addr);
-
-   return;
-}
-
-void log_memory_access(Addr addr, HWord value) {
-   VG_(printf)("STORE at 0x%lx, value: 0x%lx, context: ", addr, value);
-   MC_(pp_describe_addr)(VG_(current_DiEpoch)(), (Addr)addr);
+static void log_store(Addr addr, HWord value) {
+   AddrInfo ai;
+   ai.tag = Addr_Undescribed;
+   describe_addr (VG_(current_DiEpoch)(), addr, &ai);
+   if (ai.tag == Addr_Block && ai.Addr.Block.block_szB > 4096) {
+      ExeContext* allocated_at = ai.Addr.Block.allocated_at;
+      // for (int ip = 0; ip < allocated_at.)
+      VG_(printf)("Store at 0x%lx, value: 0x%lx, block size: %d, offset: %d\n", 
+         addr, 
+         value, 
+         ai.Addr.Block.block_szB,
+         ai.Addr.Block.rwoffset);
+   }
 }
 
 IRSB* mc_instrument(VgCallbackClosure* closure,
@@ -8679,24 +8685,23 @@ IRSB* mc_instrument(VgCallbackClosure* closure,
       if (stmt->tag == Ist_Store) {
          IRExpr* data64 = stmt->Ist.Store.data;
          IRExpr* addr64 = stmt->Ist.Store.addr;
-         if (typeOfIRExpr(bb_in->tyenv, data64) == Ity_I32) {
-            addr_tmp = newIRTemp(bb_out->tyenv, Ity_I64);
-            data_tmp = newIRTemp(bb_out->tyenv, Ity_I64);
+         addr_tmp = newIRTemp(bb_out->tyenv, Ity_I64);
+         data_tmp = newIRTemp(bb_out->tyenv, Ity_I64);
+         addStmtToIRSB(bb_out, IRStmt_WrTmp(addr_tmp, addr64));
 
-            addStmtToIRSB(bb_out, IRStmt_WrTmp(addr_tmp, addr64));
+         if (typeOfIRExpr(bb_in->tyenv, data64) == Ity_I32) {
             addStmtToIRSB(bb_out, IRStmt_WrTmp(data_tmp, IRExpr_Unop(Iop_32Uto64, data64)));
-            
             IRDirty* dirty = unsafeIRDirty_0_N(
                   0,
-                  "log_memory_access",
-                  VG_(fnptr_to_fnentry)(log_memory_access),
+                  "log_store",
+                  VG_(fnptr_to_fnentry)(log_store),
                   mkIRExprVec_2(IRExpr_RdTmp(addr_tmp), IRExpr_RdTmp(data_tmp))
             );
             addStmtToIRSB(bb_out, IRStmt_Dirty(dirty));
          }
       }
-       
-       addStmtToIRSB(bb_out, stmt);
+
+      addStmtToIRSB(bb_out, stmt);
    }
    
    return bb_out;

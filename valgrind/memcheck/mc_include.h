@@ -29,7 +29,7 @@
 
 #ifndef __MC_INCLUDE_H
 #define __MC_INCLUDE_H
-
+#include "pub_tool_addrinfo.h"
 #define MC_(str)    VGAPPEND(vgMemCheck_,str)
 
 
@@ -588,6 +588,7 @@ extern const HChar* MC_(parse_leak_kinds_tokens);
 
 /* prints a description of address a in the specified debuginfo epoch */
 void MC_(pp_describe_addr) ( DiEpoch ep, Addr a );
+void describe_addr ( DiEpoch ep, Addr a, /*OUT*/AddrInfo* ai );
 
 /* Is this address in a user-specified "ignored range" ? */
 Bool MC_(in_ignored_range) ( Addr a );

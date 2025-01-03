@@ -44,6 +44,7 @@
 #include "pub_tool_xarray.h"
 #include "pub_tool_aspacemgr.h"
 #include "pub_tool_addrinfo.h"
+#include "pub_tool_addrinfo.h"
 
 #include "mc_include.h"
 
@@ -1306,7 +1307,7 @@ static Bool mempool_block_maybe_describe( Addr a, Bool is_metapool,
 
 /* Describe an address as best you can, for error messages,
    putting the result in ai. */
-static void describe_addr ( DiEpoch ep, Addr a, /*OUT*/AddrInfo* ai )
+void describe_addr ( DiEpoch ep, Addr a, /*OUT*/AddrInfo* ai )
 {
    MC_Chunk*  mc;
 
