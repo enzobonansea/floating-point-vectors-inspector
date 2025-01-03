@@ -8658,13 +8658,13 @@ static void log_store(Addr addr, HWord value) {
    ai.tag = Addr_Undescribed;
    describe_addr (VG_(current_DiEpoch)(), addr, &ai);
    if (ai.tag == Addr_Block && ai.Addr.Block.block_szB > 4096) {
-      ExeContext* allocated_at = ai.Addr.Block.allocated_at;
-      // for (int ip = 0; ip < allocated_at.)
-      VG_(printf)("Store at 0x%lx, value: 0x%lx, block size: %d, offset: %d\n", 
+      VG_(printf)("Store at 0x%lx, value: 0x%lx, block size: %d, offset: %d. Block alloc stack trace:\n", 
          addr, 
          value, 
          ai.Addr.Block.block_szB,
          ai.Addr.Block.rwoffset);
+      VG_(pp_ExeContext)(ai.Addr.Block.allocated_at);
+      VG_(printf)("\n"); 
    }
 }
 
@@ -8674,7 +8674,6 @@ IRSB* mc_instrument(VgCallbackClosure* closure,
                    VexGuestExtents* vge,
                    IRType gWordTy,
                    IRType hWordTy) {
-   ppIRSB(bb_in);
    IRSB* bb_out = deepCopyIRSBExceptStmts(bb_in);
    IRTemp addr_tmp, data_tmp;
    
@@ -8690,7 +8689,7 @@ IRSB* mc_instrument(VgCallbackClosure* closure,
          addStmtToIRSB(bb_out, IRStmt_WrTmp(addr_tmp, addr64));
 
          if (typeOfIRExpr(bb_in->tyenv, data64) == Ity_I32) {
-            addStmtToIRSB(bb_out, IRStmt_WrTmp(data_tmp, IRExpr_Unop(Iop_32Uto64, data64)));
+            addStmtToIRSB(bb_out, IRStmt_WrTmp(data_tmp, IRExpr_Unop(Iop_32Uto64, data64))); // TODO: handle other conversions
             IRDirty* dirty = unsafeIRDirty_0_N(
                   0,
                   "log_store",
