@@ -8599,14 +8599,24 @@ IRSB* mc_instrument(VgCallbackClosure* closure,
             case Ity_I32:
                data_widen = IRExpr_Unop(Iop_32Uto64, data);
                break;
+            case Ity_I64:
+               data_widen = data;
+               break;           
             case Ity_F32:
                data_widen = IRExpr_Unop(Iop_F32toI64U, data);
                break;
             case Ity_F64:
                data_widen = IRExpr_Unop(Iop_F64toI64U, data);
                break;
-            // TODO: handle the remaining types
-            default:
+            case Ity_I128:
+            case Ity_F16:
+            case Ity_D32:
+            case Ity_D64:
+            case Ity_D128:
+            case Ity_F128:
+            case Ity_V128:
+            case Ity_V256:
+               // TODO
                break;
          }
          if (data_widen) {
