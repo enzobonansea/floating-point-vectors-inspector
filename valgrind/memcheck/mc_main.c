@@ -48,107 +48,10 @@
 #include "pub_tool_xarray.h"
 #include "pub_tool_xtree.h"
 #include "pub_tool_xtmemory.h"
-#include "pub_tool_libcfile.h"    // For VG_(open) etc
 #include "pub_tool_addrinfo.h"
 #include "pub_tool_execontext.h"
-
-
 #include "mc_include.h"
 #include "memcheck.h"   /* for client requests */
-
-
-#define LOG_BUFFER_SIZE (1024 * 1024)  // 1MB buffer
-#define MAX_ENTRY_SIZE 256
-
-static char log_buffer[1024 * 1024]; // 1MB buffer
-static Int buffer_pos = 0;
-static Int log_fd = -1;
-static Int stmt_n = 0;
-
-static void flush_log_buffer(void) {
-   if (buffer_pos > 0) {
-      VG_(write)(log_fd, log_buffer, buffer_pos);
-      buffer_pos = 0;
-   }
-}
-
-static void log_heap_write(Addr addr, IRType data_type, IREndness end, Int stmt_n) {
-   Int size = sizeofIRType(data_type);
-   if (data_type >= Ity_F16 && data_type <= Ity_V256){
-         VG_(printf)("Allocated buffer at %p, type: %d\n", addr, data_type);
-         void* ptr = (void*)addr;
-         unsigned char* byte_ptr = (unsigned char*)ptr;
-         for (Int i = 0; i < size; i++) {
-            VG_(printf)("Byte %zu: %02x\n", i, byte_ptr[i]);
-         }
-   }
-   return;
-
-   // Lazy initialization of log file
-   if (log_fd == -1) {
-      SysRes sres = VG_(open)("/tmp/heap_write.log", 
-                               VKI_O_WRONLY | VKI_O_CREAT | VKI_O_APPEND, 
-                               0644);
-      if (sr_isError(sres)) {
-         VG_(message)(Vg_UserMsg, "Error opening log file\n");
-         log_fd = -1;
-         return;
-      }
-      log_fd = sr_Res(sres);
-   }
-
-   if (data_type < Ity_F16) return;
-
-   // Prepare log entry
-   char entry[MAX_ENTRY_SIZE];
-   Int len = VG_(snprintf)(entry, sizeof(entry), 
-                            "%d %p %d %d ", 
-                            stmt_n, (void*)addr, size, data_type);
-
-   if (buffer_pos + len >= LOG_BUFFER_SIZE) {
-      flush_log_buffer();
-   }
-
-   VG_(memcpy)(log_buffer + buffer_pos, entry, len);
-   buffer_pos += len;
-
-   UChar value[32] = {0};
-   VG_(memcpy)(value, (void*)addr, size);
-
-   // Handle endianess
-   for (Int i = (end == Iend_BE ? size - 1 : 0);
-        (end == Iend_BE ? i >= 0 : i < size);
-        (end == Iend_BE ? i-- : i++)) {
-      for (Int j = 7; j >= 0; j--) {
-         // Ensure buffer doesn't overflow before appending
-         if (buffer_pos + 1 >= LOG_BUFFER_SIZE) {
-            flush_log_buffer();
-         }
-
-         // Append the bit directly
-         log_buffer[buffer_pos++] = ((value[i] >> j) & 1) ? '1' : '0';
-      }
-   }
-
-   if (buffer_pos + 1 >= LOG_BUFFER_SIZE) {
-      flush_log_buffer();
-   }
-   log_buffer[buffer_pos++] = '\n';
-
-   if (buffer_pos > LOG_BUFFER_SIZE * 0.9) {
-      flush_log_buffer();
-   }
-}
-
-
-// Optional: Add a cleanup function to flush remaining buffer
-static void cleanup_log_buffer(void) {
-   if (log_fd != -1) {
-      flush_log_buffer();
-      VG_(close)(log_fd);
-      log_fd = -1;
-   }
-}
 
 
 /* Set to 1 to do a little more sanity checking */
