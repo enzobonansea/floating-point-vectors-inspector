@@ -7,7 +7,7 @@ while true; do
     echo "3. Run bash"
     echo "4. Test alloc.c"
     echo "5. Exit"
-    read -p "Enter your choice (1-4): " choice
+    read -p "Enter your choice (1-5): " choice
 
     case $choice in
         1)
