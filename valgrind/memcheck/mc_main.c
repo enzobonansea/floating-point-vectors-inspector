@@ -105,16 +105,13 @@ static void log_heap_write(Addr addr, IRType data_type, IREndness end, Int stmt_
                             "%d %p %d %d ", 
                             stmt_n, (void*)addr, size, data_type);
 
-   // Check if we need to flush the buffer
    if (buffer_pos + len >= LOG_BUFFER_SIZE) {
       flush_log_buffer();
    }
 
-   // Copy entry to buffer
    VG_(memcpy)(log_buffer + buffer_pos, entry, len);
    buffer_pos += len;
 
-   // Optionally add bit representation of the value
    UChar value[32] = {0};
    VG_(memcpy)(value, (void*)addr, size);
 
@@ -133,13 +130,11 @@ static void log_heap_write(Addr addr, IRType data_type, IREndness end, Int stmt_
       }
    }
 
-   // Add newline
    if (buffer_pos + 1 >= LOG_BUFFER_SIZE) {
       flush_log_buffer();
    }
    log_buffer[buffer_pos++] = '\n';
 
-   // Periodically flush to reduce memory usage
    if (buffer_pos > LOG_BUFFER_SIZE * 0.9) {
       flush_log_buffer();
    }
