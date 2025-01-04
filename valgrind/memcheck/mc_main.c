@@ -8682,20 +8682,39 @@ IRSB* mc_instrument(VgCallbackClosure* closure,
       if (!stmt) continue;
 
       if (stmt->tag == Ist_Store) {
-         IRExpr* data64 = stmt->Ist.Store.data;
-         IRExpr* addr64 = stmt->Ist.Store.addr;
+         IRExpr* data = stmt->Ist.Store.data;
+         IRExpr* addr = stmt->Ist.Store.addr;
          addr_tmp = newIRTemp(bb_out->tyenv, Ity_I64);
          data_tmp = newIRTemp(bb_out->tyenv, Ity_I64);
-         addStmtToIRSB(bb_out, IRStmt_WrTmp(addr_tmp, addr64));
-
-         if (typeOfIRExpr(bb_in->tyenv, data64) == Ity_I32) {
-            addStmtToIRSB(bb_out, IRStmt_WrTmp(data_tmp, IRExpr_Unop(Iop_32Uto64, data64))); // TODO: handle other conversions
-            IRDirty* dirty = unsafeIRDirty_0_N(
-                  0,
-                  "log_store",
-                  VG_(fnptr_to_fnentry)(log_store),
-                  mkIRExprVec_2(IRExpr_RdTmp(addr_tmp), IRExpr_RdTmp(data_tmp))
-            );
+         IRExpr* data_widen = NULL;
+         IRType ty = typeOfIRExpr(bb_in->tyenv, data);
+         switch (ty) {
+            case Ity_I1:
+               data_widen = IRExpr_Unop(Iop_1Uto64, data);
+               break;
+            case Ity_I8:
+               data_widen = IRExpr_Unop(Iop_8Uto64, data); 
+               break;
+            case Ity_I16:
+               data_widen = IRExpr_Unop(Iop_16Uto64, data);
+               break;
+            case Ity_I32:
+               data_widen = IRExpr_Unop(Iop_32Uto64, data);
+               break;
+            case Ity_F32:
+               data_widen = IRExpr_Unop(Iop_F32toI64U, data);
+               break;
+            case Ity_F64:
+               data_widen = IRExpr_Unop(Iop_F64toI64U, data);
+               break;
+            // TODO: handle the remaining types
+            default:
+               break;
+         }
+         if (data_widen) {
+            addStmtToIRSB(bb_out, IRStmt_WrTmp(addr_tmp, addr));
+            addStmtToIRSB(bb_out, IRStmt_WrTmp(data_tmp, data_widen));
+            IRDirty* dirty = unsafeIRDirty_0_N(0, "log_store", VG_(fnptr_to_fnentry)(log_store), mkIRExprVec_2(IRExpr_RdTmp(addr_tmp), IRExpr_RdTmp(data_tmp)));
             addStmtToIRSB(bb_out, IRStmt_Dirty(dirty));
          }
       }
@@ -8705,69 +8724,6 @@ IRSB* mc_instrument(VgCallbackClosure* closure,
    
    return bb_out;
 }
-//     IRSB* bb_out = deepCopyIRSBExceptStmts(bb_in);
-//     IRStmt* stmt;
-
-//     for (int i = 0; i < bb_in->stmts_used; i++) {
-//          stmt = bb_in->stmts[i];
-
-//          if (!stmt) continue;
-
-//          addStmtToIRSB(bb_out, stmt);
-//          // vex_printf("stmt:%d__", stmt_n); 
-//          stmt_n++;
-//          // ppIRStmt(stmt);
-//          // vex_printf("\n"); 
-
-//          if (stmt->tag == Ist_Store) {
-//             IRDirty* di = unsafeIRDirty_0_N(
-//                0, 
-//                "log_store", 
-//                VG_(fnptr_to_fnentry)(&log_store),
-//                mkIRExprVec_1(stmt->Ist.Store.addr)
-//             );
-//             if (di != NULL) addStmtToIRSB(bb_out, IRStmt_Dirty(di));
-//          }
-
-//          if (stmt->tag == Ist_StoreG) {
-//             // IRExpr* data_expr = stmt->Ist.StoreG.details->data;
-//             // IRType data_type = typeOfIRExpr(bb_out->tyenv, data_expr);
-//             // if (data_expr != NULL && data_type != Ity_INVALID) {
-//             //    IRDirty* di = unsafeIRDirty_0_N(
-//             //       0, 
-//             //       "log_heap_write", 
-//             //       VG_(fnptr_to_fnentry)(&log_heap_write),
-//             //       mkIRExprVec_4(
-//             //          stmt->Ist.StoreG.details->addr, 
-//             //          mkIRExpr_HWord((HWord)data_type),
-//             //          mkIRExpr_HWord((HWord)stmt->Ist.StoreG.details->end), 
-//             //          mkIRExpr_HWord((HWord)stmt_n))
-//             //    );
-//             //    if (di != NULL) addStmtToIRSB(bb_out, IRStmt_Dirty(di));
-//             // }
-//          }
-
-//          if (stmt->tag == Ist_WrTmp) {
-//             // IRExpr* data_expr = stmt->Ist.WrTmp.data;
-//             // IRType data_type = typeOfIRExpr(bb_out->tyenv, data_expr);
-//             // if (data_expr != NULL && data_type != Ity_INVALID) {
-//             //    IRDirty* di = unsafeIRDirty_0_N(
-//             //       0, 
-//             //       "log_heap_write", 
-//             //       VG_(fnptr_to_fnentry)(&log_heap_write),
-//             //       mkIRExprVec_4(
-//             //          NULL, 
-//             //          mkIRExpr_HWord((HWord)data_type),
-//             //          mkIRExpr_HWord((HWord)NULL), 
-//             //          mkIRExpr_HWord((HWord)stmt_n))
-//             //    );
-//             //    if (di != NULL) addStmtToIRSB(bb_out, IRStmt_Dirty(di));
-//             // }
-//          }
-//     }
-
-//     return bb_out;
-// }
 
 static void mc_pre_clo_init(void)
 {
