@@ -8481,9 +8481,10 @@ static void log_contexts(void) {
     VgHashNode *node;
     VG_(HT_ResetIter)(allocation_contexts);
     while ((node = VG_(HT_Next)(allocation_contexts))) {
-        ExeNode* en = (ExeNode*)node;
-        VG_(pp_ExeContext)(en->ec);
-        VG_(printf)("\n");
+      ExeNode* en = (ExeNode*)node;
+      VG_(printf)("Allocation site 0x%lx\n", en->ec);
+      VG_(pp_ExeContext)(en->ec);
+      VG_(printf)("\n");
     }
 }
 
