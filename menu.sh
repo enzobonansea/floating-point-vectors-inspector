@@ -12,11 +12,8 @@ while true; do
     case $choice in
         1)
             echo "Testing Blender..."
-            inst/bin/valgrind --tool=memcheck --undef-value-errors=no blender -b -noaudio -P /tmp/example.py > /tmp/stdout.log 2>&1
-            
-            echo ""
-            echo ""
-            echo "Analyze /tmp/stdout.log"
+            inst/bin/valgrind --tool=memcheck --log-file=/tmp/memlog.log --undef-value-errors=no -- blender -b -noaudio -P /tmp/example.py
+            echo "Analyze /tmp/memlog.log"
             /bin/bash
             ;;
         2)
@@ -25,11 +22,8 @@ while true; do
             cd /usr/cpu2017
             source shrc
             cd /opt/valgrind
-            inst/bin/valgrind --tool=memcheck --undef-value-errors=no runcpu "$user_input"  > /tmp/stdout.log 2>&1
-
-            echo ""
-            echo ""
-            echo "Analyze /tmp/stdout.log"
+            inst/bin/valgrind --tool=memcheck --log-file=/tmp/memlog.log --undef-value-errors=no -- runcpu "$user_input"
+            echo "Analyze /tmp/memlog.log"
             /bin/bash
             ;;
         3)
@@ -38,8 +32,8 @@ while true; do
             ;;
         4)
             echo "Testing alloc.c ..."
-            inst/bin/valgrind --tool=memcheck /tmp/alloc  > /tmp/stdout.log 2>&1
-            echo "Analyze /tmp/stdout.log"
+            inst/bin/valgrind --tool=memcheck --log-file=/tmp/memlog.log --undef-value-errors=no -- /tmp/alloc
+            echo "Analyze /tmp/memlog.log"
             /bin/bash
             ;;
         5)
@@ -51,5 +45,3 @@ while true; do
             ;;
     esac
 done
-
-# cd /usr/cpu2017/benchspec/CPU/519.lbm_r/src
