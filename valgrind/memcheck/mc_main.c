@@ -8444,9 +8444,53 @@ static void mc_print_stats (void)
    }
 }
 
+typedef struct _ExeNode {
+    VgHashNode node;
+    ExeContext* ec;
+} ExeNode;
+
+static VgHashTable *allocation_contexts = NULL; 
+
+static void log_store(Addr addr, HWord value) {   
+   AddrInfo ai;
+   ai.tag = Addr_Undescribed;
+   describe_addr(VG_(current_DiEpoch)(), addr, &ai);
+   
+   if (ai.tag == Addr_Block && ai.Addr.Block.block_szB > 4096) {
+      VG_(printf)("Store at 0x%lx, value: 0x%lx, block size: %d, offset: %d, allocated at: 0x%lx\n", 
+         addr, 
+         value, 
+         ai.Addr.Block.block_szB,
+         ai.Addr.Block.rwoffset,
+         ai.Addr.Block.allocated_at);
+
+      ExeContext* ec = ai.Addr.Block.allocated_at;
+      if (!VG_(HT_lookup)(allocation_contexts, (UWord)ec)) {
+         ExeNode* en = VG_(malloc)("allocation_contexts.node", sizeof(ExeNode));
+         en->node.next = NULL;
+         en->node.key = (UWord)ec;
+         en->ec = ec;
+         VG_(HT_add_node)(allocation_contexts, &en->node);
+      }
+   }
+}
+
+static void log_contexts(void) {
+    VG_(printf)("\n=== Allocation stack traces ===\n");
+    
+    VgHashNode *node;
+    VG_(HT_ResetIter)(allocation_contexts);
+    while ((node = VG_(HT_Next)(allocation_contexts))) {
+        ExeNode* en = (ExeNode*)node;
+        VG_(pp_ExeContext)(en->ec);
+        VG_(printf)("\n");
+    }
+}
+
 
 static void mc_fini ( Int exitcode )
 {
+   log_contexts();
    MC_(xtmemory_report) (VG_(clo_xtree_memory_file), True);
    MC_(print_malloc_stats)();
 
@@ -8551,21 +8595,6 @@ static Bool mc_mark_unaddressable_for_watchpoint (PointKind kind, Bool insert,
    return True;
 }
 
-static void log_store(Addr addr, HWord value) {
-   AddrInfo ai;
-   ai.tag = Addr_Undescribed;
-   describe_addr (VG_(current_DiEpoch)(), addr, &ai);
-   if (ai.tag == Addr_Block && ai.Addr.Block.block_szB > 4096) {
-      VG_(printf)("Store at 0x%lx, value: 0x%lx, block size: %d, offset: %d. Block alloc stack trace:\n", 
-         addr, 
-         value, 
-         ai.Addr.Block.block_szB,
-         ai.Addr.Block.rwoffset);
-      VG_(pp_ExeContext)(ai.Addr.Block.allocated_at);
-      VG_(printf)("\n"); 
-   }
-}
-
 IRSB* mc_instrument(VgCallbackClosure* closure,
                    IRSB* bb_in,
                    VexGuestLayout* layout,
@@ -8635,6 +8664,8 @@ IRSB* mc_instrument(VgCallbackClosure* closure,
 
 static void mc_pre_clo_init(void)
 {
+   allocation_contexts = VG_(HT_construct)("allocation_contexts");
+
    VG_(details_name)            ("Memcheck");
    VG_(details_version)         (NULL);
    VG_(details_description)     ("a memory error detector");
