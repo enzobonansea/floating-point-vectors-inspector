@@ -3,7 +3,7 @@ FROM ubuntu:20.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y build-essential wget gcc make libncurses5-dev libncursesw5-dev autotools-dev automake autoconf libtool nano libc6-dbg grep blender alsa-utils libarchive-tools
 
-# Install SPEC
+# SPEC
 COPY cpu2017-1.1.9.iso /opt/spec/cpu2017.iso
 RUN mkdir -p /usr/cpu2017 \
     && bsdtar -C /usr/cpu2017 -xf /opt/spec/cpu2017.iso \
@@ -19,6 +19,7 @@ COPY example.py /tmp/example.py
 ADD valgrind /opt/valgrind
 WORKDIR /opt/valgrind
 RUN sed -i -e 's/\r$//' autogen.sh && find . -type f -exec sed -i -e 's/\r$//' {} \;
+RUN chmod +x ./auxprogs/*
 RUN ./autogen.sh && ./configure --prefix=`pwd`/inst && make install
 
 # Init container
