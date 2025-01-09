@@ -20,6 +20,7 @@ ADD valgrind /opt/valgrind
 WORKDIR /opt/valgrind
 RUN sed -i -e 's/\r$//' autogen.sh && find . -type f -exec sed -i -e 's/\r$//' {} \;
 RUN chmod +x ./auxprogs/*
+RUN chmod +x autogen.sh
 RUN ./autogen.sh && ./configure --prefix=`pwd`/inst && make install
 
 # Init container
