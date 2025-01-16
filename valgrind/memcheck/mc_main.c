@@ -8444,66 +8444,98 @@ static void mc_print_stats (void)
    }
 }
 
-#define MAX_LOG_ENTRIES 4096
+#define MAX_LOG_ENTRIES 16384
+#define MIN_BLOCK_SIZE 4096
 
 typedef struct {
    Addr  addr;
    HWord value;
-   UInt  block_szB;
-   UInt  rwoffset;
    ExeContext* ec;
 } LogEntry;
-
-static LogEntry log_buffer[MAX_LOG_ENTRIES];
-static Int log_count = 0;
-
-// Utility function for flushing the buffer:
-static void flush_log_buffer(void)
-{
-   for (Int i = 0; i < log_count; i++) {
-      VG_(printf)(
-         "Store at 0x%lx, value: 0x%lx, block size: %u, offset: %u, allocated at: 0x%lx\n", 
-         log_buffer[i].addr,
-         log_buffer[i].value,
-         log_buffer[i].block_szB,
-         log_buffer[i].rwoffset,
-         (Addr)log_buffer[i].ec
-      );
-   }
-   log_count = 0;
-}
 
 typedef struct _ExeNode {
     VgHashNode node;
     ExeContext* ec;
 } ExeNode;
 
+typedef struct _BlockNode {
+   VgHashNode node;
+   Addr     start;
+   SizeT    size;
+} BlockNode;
+
 static VgHashTable *allocation_contexts = NULL; 
+static VgHashTable *seen_blocks = NULL;
+static LogEntry log_buffer[MAX_LOG_ENTRIES];
+static Int log_count = 0;
 
-static __inline__ void log_store(Addr addr, HWord value) {
-   AddrInfo ai;
-   ai.tag = Addr_Undescribed;
-   describe_addr(VG_(current_DiEpoch)(), addr, &ai);
-   
-   if (ai.tag == Addr_Block && ai.Addr.Block.block_szB > 4096) {
-      log_buffer[log_count].addr       = addr;
-      log_buffer[log_count].value      = value;
-      log_buffer[log_count].block_szB  = ai.Addr.Block.block_szB;
-      log_buffer[log_count].rwoffset   = ai.Addr.Block.rwoffset;
-      log_buffer[log_count].ec         = ai.Addr.Block.allocated_at;
-      
-      log_count++;
-      if (log_count >= MAX_LOG_ENTRIES) {
-         flush_log_buffer();
+static void flush_log_buffer(void)
+{
+   for (Int i = 0; i < log_count; i++) {
+      VG_(printf)("0x%lx 0x%lx\n", log_buffer[i].addr, log_buffer[i].value);
+   }
+   log_count = 0;
+}
+
+static void print(Addr addr, HWord value)
+{
+   log_buffer[log_count].addr       = addr;
+   log_buffer[log_count].value      = value;
+   log_count++;
+   if (log_count >= MAX_LOG_ENTRIES) {
+      flush_log_buffer();
+   }
+}
+
+static BlockNode* find_seen_block(Addr addr)
+{
+    VgHashNode *node = NULL;
+    if (seen_blocks) {
+      Bool found = False;
+      VG_(HT_ResetIter)(seen_blocks);
+      while (!found && (node = VG_(HT_Next)(seen_blocks))) {
+         BlockNode* block_node = (BlockNode*)node;
+         found = block_node->start <= addr && addr <= block_node->start + block_node->size;
       }
+    }
 
-      ExeContext* ec = ai.Addr.Block.allocated_at;
-      if (!VG_(HT_lookup)(allocation_contexts, (UWord)ec)) {
-         ExeNode* en = VG_(malloc)("allocation_contexts.node", sizeof(ExeNode));
-         en->node.next = NULL;
-         en->node.key = (UWord)ec;
-         en->ec = ec;
-         VG_(HT_add_node)(allocation_contexts, &en->node);
+    return node;
+}
+
+static void log_store(Addr addr, HWord value) {
+   BlockNode* bd = find_seen_block(addr);
+   if (bd) {
+      if (bd->size > MIN_BLOCK_SIZE) {
+         print(addr, value);
+      }
+   } else {
+      AddrInfo ai;
+      ai.tag = Addr_Undescribed;
+      describe_addr(VG_(current_DiEpoch)(), addr, &ai);
+
+      if (ai.tag == Addr_Block) {
+         Addr block_start = addr - ai.Addr.Block.rwoffset;
+         if (!VG_(HT_lookup)(seen_blocks, block_start)) {
+            BlockNode* block_node = VG_(malloc)("seen_blocks.node", sizeof(BlockNode));
+            block_node->node.next = NULL;
+            block_node->node.key = block_start;
+            block_node->start = block_start;
+            block_node->size = ai.Addr.Block.block_szB;
+            VG_(HT_add_node)(seen_blocks, &block_node->node);
+         }
+
+         if (ai.Addr.Block.block_szB > MIN_BLOCK_SIZE) {
+            print(addr, value);
+
+            ExeContext* ec = ai.Addr.Block.allocated_at;
+            if (!VG_(HT_lookup)(allocation_contexts, (UWord)ec)) {
+               ExeNode* en = VG_(malloc)("allocation_contexts.node", sizeof(ExeNode));
+               en->node.next = NULL;
+               en->node.key = (UWord)ec;
+               en->ec = ec;
+               VG_(HT_add_node)(allocation_contexts, &en->node);
+            }
+         }  
       }
    }
 }
@@ -8524,7 +8556,7 @@ static void log_contexts(void) {
 
 static void mc_fini ( Int exitcode )
 {
-   log_contexts();
+   log_contexts(); // TODO: free hash tables
    MC_(xtmemory_report) (VG_(clo_xtree_memory_file), True);
    MC_(print_malloc_stats)();
 
@@ -8699,6 +8731,7 @@ IRSB* mc_instrument(VgCallbackClosure* closure,
 static void mc_pre_clo_init(void)
 {
    allocation_contexts = VG_(HT_construct)("allocation_contexts");
+   seen_blocks = VG_(HT_construct)("seen_blocks");
 
    VG_(details_name)            ("Memcheck");
    VG_(details_version)         (NULL);
