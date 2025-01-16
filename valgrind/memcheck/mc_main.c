@@ -8444,6 +8444,35 @@ static void mc_print_stats (void)
    }
 }
 
+#define MAX_LOG_ENTRIES 4096
+
+typedef struct {
+   Addr  addr;
+   HWord value;
+   UInt  block_szB;
+   UInt  rwoffset;
+   ExeContext* ec;
+} LogEntry;
+
+static LogEntry log_buffer[MAX_LOG_ENTRIES];
+static Int log_count = 0;
+
+// Utility function for flushing the buffer:
+static void flush_log_buffer(void)
+{
+   for (Int i = 0; i < log_count; i++) {
+      VG_(printf)(
+         "Store at 0x%lx, value: 0x%lx, block size: %u, offset: %u, allocated at: 0x%lx\n", 
+         log_buffer[i].addr,
+         log_buffer[i].value,
+         log_buffer[i].block_szB,
+         log_buffer[i].rwoffset,
+         (Addr)log_buffer[i].ec
+      );
+   }
+   log_count = 0;
+}
+
 typedef struct _ExeNode {
     VgHashNode node;
     ExeContext* ec;
@@ -8451,18 +8480,22 @@ typedef struct _ExeNode {
 
 static VgHashTable *allocation_contexts = NULL; 
 
-static void log_store(Addr addr, HWord value) {   
+static __inline__ void log_store(Addr addr, HWord value) {
    AddrInfo ai;
    ai.tag = Addr_Undescribed;
    describe_addr(VG_(current_DiEpoch)(), addr, &ai);
    
    if (ai.tag == Addr_Block && ai.Addr.Block.block_szB > 4096) {
-      VG_(printf)("Store at 0x%lx, value: 0x%lx, block size: %d, offset: %d, allocated at: 0x%lx\n", 
-         addr, 
-         value, 
-         ai.Addr.Block.block_szB,
-         ai.Addr.Block.rwoffset,
-         ai.Addr.Block.allocated_at);
+      log_buffer[log_count].addr       = addr;
+      log_buffer[log_count].value      = value;
+      log_buffer[log_count].block_szB  = ai.Addr.Block.block_szB;
+      log_buffer[log_count].rwoffset   = ai.Addr.Block.rwoffset;
+      log_buffer[log_count].ec         = ai.Addr.Block.allocated_at;
+      
+      log_count++;
+      if (log_count >= MAX_LOG_ENTRIES) {
+         flush_log_buffer();
+      }
 
       ExeContext* ec = ai.Addr.Block.allocated_at;
       if (!VG_(HT_lookup)(allocation_contexts, (UWord)ec)) {
