@@ -16,5 +16,6 @@ grep 'Setting up' CPU2017.001.log
 go 519.lbm run
 go 519.lbm run run_base_test_mytest-m64.0000
 cp ../../build/build_base_mytest-m64.0000/lbm_r .
-./lbm_r 20 reference.dat 0 1 100_100_130_cf_a.of 0<&- > lbm.out 2>> lbm.err
-cat lbm.out
+echo "Testing lbm avoiding runspec..."
+/opt/valgrind/inst/bin/valgrind --tool=memcheck --undef-value-errors=no -- ./lbm_r 20 reference.dat 0 1 100_100_130_cf_a.of 0<&- > lbm.out 2>> lbm.err
+echo "Done. Analyze /tmp/memlog.log"
