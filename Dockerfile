@@ -27,4 +27,8 @@ RUN ./autogen.sh && ./configure --prefix=`pwd`/inst && make install
 COPY menu.sh /usr/local/bin/menu.sh
 RUN sed -i 's/\r$//' /usr/local/bin/menu.sh
 RUN chmod +x /usr/local/bin/menu.sh
+
+COPY lbm.sh /usr/local/bin/lbm.sh
+RUN sed -i 's/\r$//' /usr/local/bin/lbm.sh
+RUN chmod +x /usr/local/bin/lbm.sh
 CMD ["/usr/local/bin/menu.sh"]

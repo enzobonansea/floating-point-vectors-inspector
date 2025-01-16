@@ -3,7 +3,7 @@
 while true; do
     echo "Select an option:"
     echo "1. Test blender"
-    echo "2. Test SPEC2017"
+    echo "2. Run lbm avoiding runspec"
     echo "3. Run bash"
     echo "4. Test alloc.c"
     echo "5. Exit"
@@ -17,13 +17,7 @@ while true; do
             /bin/bash
             ;;
         2)
-            read -p "Which SPEC2017 app do you want to test? " user_input
-            echo "Testing the SPEC2017 app $user_input"
-            cd /usr/cpu2017
-            source shrc
-            cd /opt/valgrind
-            inst/bin/valgrind --tool=memcheck --log-file=/tmp/memlog.log --undef-value-errors=no -- runcpu "$user_input"
-            echo "Analyze /tmp/memlog.log"
+            /usr/local/bin/lbm.sh
             /bin/bash
             ;;
         3)
