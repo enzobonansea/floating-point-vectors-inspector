@@ -8454,12 +8454,14 @@ typedef struct {
 } LogEntry;
 
 typedef struct _ExeNode {
-    VgHashNode node;
-    ExeContext* ec;
+   void*       next;
+   UWord       key;
+   ExeContext* ec;
 } ExeNode;
 
 typedef struct _BlockNode {
-   VgHashNode node;
+   void*       next;
+   UWord       key;
    Addr     start;
    SizeT    size;
 } BlockNode;
@@ -8517,11 +8519,11 @@ static void log_store(Addr addr, HWord value) {
          Addr block_start = addr - ai.Addr.Block.rwoffset;
          if (!VG_(HT_lookup)(seen_blocks, block_start)) {
             BlockNode* block_node = VG_(malloc)("seen_blocks.node", sizeof(BlockNode));
-            block_node->node.next = NULL;
-            block_node->node.key = block_start;
+            block_node->next = NULL;
+            block_node->key = block_start;
             block_node->start = block_start;
             block_node->size = ai.Addr.Block.block_szB;
-            VG_(HT_add_node)(seen_blocks, &block_node->node);
+            VG_(HT_add_node)(seen_blocks, block_node);
          }
 
          if (ai.Addr.Block.block_szB > MIN_BLOCK_SIZE) {
@@ -8530,10 +8532,10 @@ static void log_store(Addr addr, HWord value) {
             ExeContext* ec = ai.Addr.Block.allocated_at;
             if (!VG_(HT_lookup)(allocation_contexts, (UWord)ec)) {
                ExeNode* en = VG_(malloc)("allocation_contexts.node", sizeof(ExeNode));
-               en->node.next = NULL;
-               en->node.key = (UWord)ec;
+               en->next = NULL;
+               en->key = (UWord)ec;
                en->ec = ec;
-               VG_(HT_add_node)(allocation_contexts, &en->node);
+               VG_(HT_add_node)(allocation_contexts, en);
             }
          }  
       }
