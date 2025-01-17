@@ -8553,6 +8553,9 @@ static void log_contexts(void) {
       VG_(pp_ExeContext)(en->ec);
       VG_(printf)("\n");
     }
+
+    VG_(HT_destruct) (allocation_contexts, VG_(free));
+    VG_(HT_destruct) (seen_blocks, VG_(free));
 }
 
 
