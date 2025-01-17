@@ -58,33 +58,25 @@
 #define MIN_BLOCK_SIZE 4096
 
 typedef struct {
-   Addr  addr;
-   HWord value;
-   ExeContext* ec;
+   Addr        addr;
+   HWord       value;
 } LogEntry;
 
-typedef struct _ExeNode {
-   void*       next;
-   UWord       key;
-   ExeContext* ec;
-} ExeNode;
-
-typedef struct _BlockNode {
-   void*       next;
-   UWord       key;
-   Addr     start;
-   SizeT    size;
+typedef struct {
+   void*          next;
+   UWord          key;
+   Addr           start;
+   SizeT          size;
+   ExeContext*    allocation_site;
 } BlockNode;
 
-static VgHashTable *allocation_contexts = NULL; 
-static VgHashTable *seen_blocks = NULL;
 static LogEntry log_buffer[MAX_LOG_ENTRIES];
 static Int log_count = 0;
+static VgHashTable *blocks = NULL; 
 
 static void memlog_init(void) 
 {
-   allocation_contexts = VG_(HT_construct)("allocation_contexts");
-   seen_blocks = VG_(HT_construct)("seen_blocks");
+   blocks = VG_(HT_construct)("blocks");
 }
 
 static void flush_log_buffer(void)
@@ -105,73 +97,61 @@ static void print(Addr addr, HWord value)
    }
 }
 
-static BlockNode* find_seen_block(Addr addr)
+static BlockNode* find_block(Addr addr)
 {
     VgHashNode *node = NULL;
-    if (seen_blocks) {
-      Bool found = False;
-      VG_(HT_ResetIter)(seen_blocks);
-      while (!found && (node = VG_(HT_Next)(seen_blocks))) {
+    if (blocks) {
+      VG_(HT_ResetIter)(blocks);
+      while ((node = VG_(HT_Next)(blocks))) {
          BlockNode* block_node = (BlockNode*)node;
-         found = block_node->start <= addr && addr <= block_node->start + block_node->size;
+         if (block_node->start <= addr && addr <= block_node->start + block_node->size) {
+             return block_node;
+         }
       }
     }
-
-    return node;
+    
+    return NULL;
 }
 
 static void log_store(Addr addr, HWord value) {
-   BlockNode* bd = find_seen_block(addr);
-   if (bd) {
-      if (bd->size > MIN_BLOCK_SIZE) {
-         print(addr, value);
-      }
-   } else {
+   BlockNode* existing_block = find_block(addr);
+
+   if (!existing_block) {
       AddrInfo ai;
       ai.tag = Addr_Undescribed;
       describe_addr(VG_(current_DiEpoch)(), addr, &ai);
 
       if (ai.tag == Addr_Block) {
          Addr block_start = addr - ai.Addr.Block.rwoffset;
-         if (!VG_(HT_lookup)(seen_blocks, block_start)) {
-            BlockNode* block_node = VG_(malloc)("seen_blocks.node", sizeof(BlockNode));
-            block_node->next = NULL;
-            block_node->key = block_start;
-            block_node->start = block_start;
-            block_node->size = ai.Addr.Block.block_szB;
-            VG_(HT_add_node)(seen_blocks, block_node);
-         }
-
-         if (ai.Addr.Block.block_szB > MIN_BLOCK_SIZE) {
-            print(addr, value);
-
-            ExeContext* ec = ai.Addr.Block.allocated_at;
-            if (!VG_(HT_lookup)(allocation_contexts, (UWord)ec)) {
-               ExeNode* en = VG_(malloc)("allocation_contexts.node", sizeof(ExeNode));
-               en->next = NULL;
-               en->key = (UWord)ec;
-               en->ec = ec;
-               VG_(HT_add_node)(allocation_contexts, en);
-            }
-         }  
+         BlockNode* new_block = VG_(malloc)("blocks.node", sizeof(BlockNode));
+         new_block->next = NULL;
+         new_block->key = block_start;
+         new_block->start = block_start;
+         new_block->size = ai.Addr.Block.block_szB;
+         new_block->allocation_site = ai.Addr.Block.allocated_at;
+         VG_(HT_add_node)(blocks, new_block);
+         existing_block = new_block;
       }
    }
+
+   if (existing_block->size > MIN_BLOCK_SIZE) {
+      print(addr, value);
+   } 
 }
 
 static void memlog_fini(void) {
-    VG_(printf)("\n=== Allocation stack traces ===\n");
+    VG_(printf)("\n=== Allocation sites ===\n");
     
     VgHashNode *node;
-    VG_(HT_ResetIter)(allocation_contexts);
-    while ((node = VG_(HT_Next)(allocation_contexts))) {
-      ExeNode* en = (ExeNode*)node;
-      VG_(printf)("Allocation site 0x%lx\n", en->ec);
-      VG_(pp_ExeContext)(en->ec);
+    VG_(HT_ResetIter)(blocks);
+    while ((node = VG_(HT_Next)(blocks))) {
+      BlockNode* block_node = (BlockNode*)node;
+      VG_(printf)("Start 0x%lx, size %d\n", block_node->start, block_node->size);
+      VG_(pp_ExeContext)(block_node->allocation_site);
       VG_(printf)("\n");
     }
 
-    VG_(HT_destruct) (allocation_contexts, VG_(free));
-    VG_(HT_destruct) (seen_blocks, VG_(free));
+    VG_(HT_destruct) (blocks, VG_(free));
 }
 
 IRSB* mc_instrument(VgCallbackClosure* closure,
