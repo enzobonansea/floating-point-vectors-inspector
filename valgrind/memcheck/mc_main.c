@@ -134,7 +134,7 @@ static void log_store(Addr addr, HWord value) {
       }
    }
 
-   if (existing_block->size > MIN_BLOCK_SIZE) {
+   if (existing_block && existing_block->size > MIN_BLOCK_SIZE) {
       print(addr, value);
    } 
 }
