@@ -588,7 +588,7 @@ extern const HChar* MC_(parse_leak_kinds_tokens);
 
 /* prints a description of address a in the specified debuginfo epoch */
 void MC_(pp_describe_addr) ( DiEpoch ep, Addr a );
-void describe_addr ( DiEpoch ep, Addr a, /*OUT*/AddrInfo* ai );
+void describe_addr ( DiEpoch ep, Addr a, /*OUT*/AddrInfo* ai ); // Memlog
 
 /* Is this address in a user-specified "ignored range" ? */
 Bool MC_(in_ignored_range) ( Addr a );
