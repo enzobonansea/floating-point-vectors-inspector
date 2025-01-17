@@ -48,11 +48,200 @@
 #include "pub_tool_xarray.h"
 #include "pub_tool_xtree.h"
 #include "pub_tool_xtmemory.h"
-#include "pub_tool_addrinfo.h"
-#include "pub_tool_execontext.h"
+#include "pub_tool_addrinfo.h" // For Memlog
+#include "pub_tool_execontext.h" // For Memlog
 #include "mc_include.h"
 #include "memcheck.h"   /* for client requests */
 
+/* Memlog */
+#define MAX_LOG_ENTRIES 16384
+#define MIN_BLOCK_SIZE 4096
+
+typedef struct {
+   Addr  addr;
+   HWord value;
+   ExeContext* ec;
+} LogEntry;
+
+typedef struct _ExeNode {
+   void*       next;
+   UWord       key;
+   ExeContext* ec;
+} ExeNode;
+
+typedef struct _BlockNode {
+   void*       next;
+   UWord       key;
+   Addr     start;
+   SizeT    size;
+} BlockNode;
+
+static VgHashTable *allocation_contexts = NULL; 
+static VgHashTable *seen_blocks = NULL;
+static LogEntry log_buffer[MAX_LOG_ENTRIES];
+static Int log_count = 0;
+
+static void memlog_init(void) 
+{
+   allocation_contexts = VG_(HT_construct)("allocation_contexts");
+   seen_blocks = VG_(HT_construct)("seen_blocks");
+}
+
+static void flush_log_buffer(void)
+{
+   for (Int i = 0; i < log_count; i++) {
+      VG_(printf)("0x%lx 0x%lx\n", log_buffer[i].addr, log_buffer[i].value);
+   }
+   log_count = 0;
+}
+
+static void print(Addr addr, HWord value)
+{
+   log_buffer[log_count].addr       = addr;
+   log_buffer[log_count].value      = value;
+   log_count++;
+   if (log_count >= MAX_LOG_ENTRIES) {
+      flush_log_buffer();
+   }
+}
+
+static BlockNode* find_seen_block(Addr addr)
+{
+    VgHashNode *node = NULL;
+    if (seen_blocks) {
+      Bool found = False;
+      VG_(HT_ResetIter)(seen_blocks);
+      while (!found && (node = VG_(HT_Next)(seen_blocks))) {
+         BlockNode* block_node = (BlockNode*)node;
+         found = block_node->start <= addr && addr <= block_node->start + block_node->size;
+      }
+    }
+
+    return node;
+}
+
+static void log_store(Addr addr, HWord value) {
+   BlockNode* bd = find_seen_block(addr);
+   if (bd) {
+      if (bd->size > MIN_BLOCK_SIZE) {
+         print(addr, value);
+      }
+   } else {
+      AddrInfo ai;
+      ai.tag = Addr_Undescribed;
+      describe_addr(VG_(current_DiEpoch)(), addr, &ai);
+
+      if (ai.tag == Addr_Block) {
+         Addr block_start = addr - ai.Addr.Block.rwoffset;
+         if (!VG_(HT_lookup)(seen_blocks, block_start)) {
+            BlockNode* block_node = VG_(malloc)("seen_blocks.node", sizeof(BlockNode));
+            block_node->next = NULL;
+            block_node->key = block_start;
+            block_node->start = block_start;
+            block_node->size = ai.Addr.Block.block_szB;
+            VG_(HT_add_node)(seen_blocks, block_node);
+         }
+
+         if (ai.Addr.Block.block_szB > MIN_BLOCK_SIZE) {
+            print(addr, value);
+
+            ExeContext* ec = ai.Addr.Block.allocated_at;
+            if (!VG_(HT_lookup)(allocation_contexts, (UWord)ec)) {
+               ExeNode* en = VG_(malloc)("allocation_contexts.node", sizeof(ExeNode));
+               en->next = NULL;
+               en->key = (UWord)ec;
+               en->ec = ec;
+               VG_(HT_add_node)(allocation_contexts, en);
+            }
+         }  
+      }
+   }
+}
+
+static void memlog_fini(void) {
+    VG_(printf)("\n=== Allocation stack traces ===\n");
+    
+    VgHashNode *node;
+    VG_(HT_ResetIter)(allocation_contexts);
+    while ((node = VG_(HT_Next)(allocation_contexts))) {
+      ExeNode* en = (ExeNode*)node;
+      VG_(printf)("Allocation site 0x%lx\n", en->ec);
+      VG_(pp_ExeContext)(en->ec);
+      VG_(printf)("\n");
+    }
+
+    VG_(HT_destruct) (allocation_contexts, VG_(free));
+    VG_(HT_destruct) (seen_blocks, VG_(free));
+}
+
+IRSB* mc_instrument(VgCallbackClosure* closure,
+                   IRSB* bb_in,
+                   VexGuestLayout* layout,
+                   VexGuestExtents* vge,
+                   IRType gWordTy,
+                   IRType hWordTy) {
+   IRSB* bb_out = deepCopyIRSBExceptStmts(bb_in);
+   IRTemp addr_tmp, data_tmp;
+   
+   for (Int i = 0; i < bb_in->stmts_used; i++) {
+      IRStmt* stmt = bb_in->stmts[i];
+      if (!stmt) continue;
+
+      if (stmt->tag == Ist_Store) {
+         IRExpr* data = stmt->Ist.Store.data;
+         IRExpr* addr = stmt->Ist.Store.addr;
+         addr_tmp = newIRTemp(bb_out->tyenv, Ity_I64);
+         data_tmp = newIRTemp(bb_out->tyenv, Ity_I64);
+         IRExpr* data_widen = NULL;
+         IRType ty = typeOfIRExpr(bb_in->tyenv, data);
+         switch (ty) {
+            case Ity_I1:
+               data_widen = IRExpr_Unop(Iop_1Uto64, data);
+               break;
+            case Ity_I8:
+               data_widen = IRExpr_Unop(Iop_8Uto64, data); 
+               break;
+            case Ity_I16:
+               data_widen = IRExpr_Unop(Iop_16Uto64, data);
+               break;
+            case Ity_I32:
+               data_widen = IRExpr_Unop(Iop_32Uto64, data);
+               break;
+            case Ity_I64:
+               data_widen = data;
+               break;           
+            case Ity_F32:
+               data_widen = IRExpr_Unop(Iop_F32toI64U, data);
+               break;
+            case Ity_F64:
+               data_widen = IRExpr_Unop(Iop_F64toI64U, data);
+               break;
+            case Ity_I128:
+            case Ity_F16:
+            case Ity_D32:
+            case Ity_D64:
+            case Ity_D128:
+            case Ity_F128:
+            case Ity_V128:
+            case Ity_V256:
+               // TODO
+               break;
+         }
+         if (data_widen) {
+            addStmtToIRSB(bb_out, IRStmt_WrTmp(addr_tmp, addr));
+            addStmtToIRSB(bb_out, IRStmt_WrTmp(data_tmp, data_widen));
+            IRDirty* dirty = unsafeIRDirty_0_N(0, "log_store", VG_(fnptr_to_fnentry)(log_store), mkIRExprVec_2(IRExpr_RdTmp(addr_tmp), IRExpr_RdTmp(data_tmp)));
+            addStmtToIRSB(bb_out, IRStmt_Dirty(dirty));
+         }
+      }
+
+      addStmtToIRSB(bb_out, stmt);
+   }
+   
+   return bb_out;
+}
+
+/* End Memlog */
 
 /* Set to 1 to do a little more sanity checking */
 #define VG_DEBUG_MEMORY 0
@@ -8444,124 +8633,12 @@ static void mc_print_stats (void)
    }
 }
 
-#define MAX_LOG_ENTRIES 16384
-#define MIN_BLOCK_SIZE 4096
 
-typedef struct {
-   Addr  addr;
-   HWord value;
-   ExeContext* ec;
-} LogEntry;
-
-typedef struct _ExeNode {
-   void*       next;
-   UWord       key;
-   ExeContext* ec;
-} ExeNode;
-
-typedef struct _BlockNode {
-   void*       next;
-   UWord       key;
-   Addr     start;
-   SizeT    size;
-} BlockNode;
-
-static VgHashTable *allocation_contexts = NULL; 
-static VgHashTable *seen_blocks = NULL;
-static LogEntry log_buffer[MAX_LOG_ENTRIES];
-static Int log_count = 0;
-
-static void flush_log_buffer(void)
-{
-   for (Int i = 0; i < log_count; i++) {
-      VG_(printf)("0x%lx 0x%lx\n", log_buffer[i].addr, log_buffer[i].value);
-   }
-   log_count = 0;
-}
-
-static void print(Addr addr, HWord value)
-{
-   log_buffer[log_count].addr       = addr;
-   log_buffer[log_count].value      = value;
-   log_count++;
-   if (log_count >= MAX_LOG_ENTRIES) {
-      flush_log_buffer();
-   }
-}
-
-static BlockNode* find_seen_block(Addr addr)
-{
-    VgHashNode *node = NULL;
-    if (seen_blocks) {
-      Bool found = False;
-      VG_(HT_ResetIter)(seen_blocks);
-      while (!found && (node = VG_(HT_Next)(seen_blocks))) {
-         BlockNode* block_node = (BlockNode*)node;
-         found = block_node->start <= addr && addr <= block_node->start + block_node->size;
-      }
-    }
-
-    return node;
-}
-
-static void log_store(Addr addr, HWord value) {
-   BlockNode* bd = find_seen_block(addr);
-   if (bd) {
-      if (bd->size > MIN_BLOCK_SIZE) {
-         print(addr, value);
-      }
-   } else {
-      AddrInfo ai;
-      ai.tag = Addr_Undescribed;
-      describe_addr(VG_(current_DiEpoch)(), addr, &ai);
-
-      if (ai.tag == Addr_Block) {
-         Addr block_start = addr - ai.Addr.Block.rwoffset;
-         if (!VG_(HT_lookup)(seen_blocks, block_start)) {
-            BlockNode* block_node = VG_(malloc)("seen_blocks.node", sizeof(BlockNode));
-            block_node->next = NULL;
-            block_node->key = block_start;
-            block_node->start = block_start;
-            block_node->size = ai.Addr.Block.block_szB;
-            VG_(HT_add_node)(seen_blocks, block_node);
-         }
-
-         if (ai.Addr.Block.block_szB > MIN_BLOCK_SIZE) {
-            print(addr, value);
-
-            ExeContext* ec = ai.Addr.Block.allocated_at;
-            if (!VG_(HT_lookup)(allocation_contexts, (UWord)ec)) {
-               ExeNode* en = VG_(malloc)("allocation_contexts.node", sizeof(ExeNode));
-               en->next = NULL;
-               en->key = (UWord)ec;
-               en->ec = ec;
-               VG_(HT_add_node)(allocation_contexts, en);
-            }
-         }  
-      }
-   }
-}
-
-static void log_contexts(void) {
-    VG_(printf)("\n=== Allocation stack traces ===\n");
-    
-    VgHashNode *node;
-    VG_(HT_ResetIter)(allocation_contexts);
-    while ((node = VG_(HT_Next)(allocation_contexts))) {
-      ExeNode* en = (ExeNode*)node;
-      VG_(printf)("Allocation site 0x%lx\n", en->ec);
-      VG_(pp_ExeContext)(en->ec);
-      VG_(printf)("\n");
-    }
-
-    VG_(HT_destruct) (allocation_contexts, VG_(free));
-    VG_(HT_destruct) (seen_blocks, VG_(free));
-}
 
 
 static void mc_fini ( Int exitcode )
 {
-   log_contexts(); // TODO: free hash tables
+   memlog_fini(); // Memlog
    MC_(xtmemory_report) (VG_(clo_xtree_memory_file), True);
    MC_(print_malloc_stats)();
 
@@ -8666,77 +8743,9 @@ static Bool mc_mark_unaddressable_for_watchpoint (PointKind kind, Bool insert,
    return True;
 }
 
-IRSB* mc_instrument(VgCallbackClosure* closure,
-                   IRSB* bb_in,
-                   VexGuestLayout* layout,
-                   VexGuestExtents* vge,
-                   IRType gWordTy,
-                   IRType hWordTy) {
-   IRSB* bb_out = deepCopyIRSBExceptStmts(bb_in);
-   IRTemp addr_tmp, data_tmp;
-   
-   for (Int i = 0; i < bb_in->stmts_used; i++) {
-      IRStmt* stmt = bb_in->stmts[i];
-      if (!stmt) continue;
-
-      if (stmt->tag == Ist_Store) {
-         IRExpr* data = stmt->Ist.Store.data;
-         IRExpr* addr = stmt->Ist.Store.addr;
-         addr_tmp = newIRTemp(bb_out->tyenv, Ity_I64);
-         data_tmp = newIRTemp(bb_out->tyenv, Ity_I64);
-         IRExpr* data_widen = NULL;
-         IRType ty = typeOfIRExpr(bb_in->tyenv, data);
-         switch (ty) {
-            case Ity_I1:
-               data_widen = IRExpr_Unop(Iop_1Uto64, data);
-               break;
-            case Ity_I8:
-               data_widen = IRExpr_Unop(Iop_8Uto64, data); 
-               break;
-            case Ity_I16:
-               data_widen = IRExpr_Unop(Iop_16Uto64, data);
-               break;
-            case Ity_I32:
-               data_widen = IRExpr_Unop(Iop_32Uto64, data);
-               break;
-            case Ity_I64:
-               data_widen = data;
-               break;           
-            case Ity_F32:
-               data_widen = IRExpr_Unop(Iop_F32toI64U, data);
-               break;
-            case Ity_F64:
-               data_widen = IRExpr_Unop(Iop_F64toI64U, data);
-               break;
-            case Ity_I128:
-            case Ity_F16:
-            case Ity_D32:
-            case Ity_D64:
-            case Ity_D128:
-            case Ity_F128:
-            case Ity_V128:
-            case Ity_V256:
-               // TODO
-               break;
-         }
-         if (data_widen) {
-            addStmtToIRSB(bb_out, IRStmt_WrTmp(addr_tmp, addr));
-            addStmtToIRSB(bb_out, IRStmt_WrTmp(data_tmp, data_widen));
-            IRDirty* dirty = unsafeIRDirty_0_N(0, "log_store", VG_(fnptr_to_fnentry)(log_store), mkIRExprVec_2(IRExpr_RdTmp(addr_tmp), IRExpr_RdTmp(data_tmp)));
-            addStmtToIRSB(bb_out, IRStmt_Dirty(dirty));
-         }
-      }
-
-      addStmtToIRSB(bb_out, stmt);
-   }
-   
-   return bb_out;
-}
-
 static void mc_pre_clo_init(void)
 {
-   allocation_contexts = VG_(HT_construct)("allocation_contexts");
-   seen_blocks = VG_(HT_construct)("seen_blocks");
+   memlog_init(); // Memlog
 
    VG_(details_name)            ("Memcheck");
    VG_(details_version)         (NULL);
@@ -8747,7 +8756,7 @@ static void mc_pre_clo_init(void)
    VG_(details_avg_translation_sizeB) ( 640 );
 
    VG_(basic_tool_funcs)          (mc_post_clo_init,
-                                   mc_instrument,
+                                   mc_instrument, // Memlog
                                    mc_fini);
 
    VG_(needs_final_IR_tidy_pass)  ( MC_(final_tidy) );
