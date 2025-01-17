@@ -23,12 +23,15 @@ RUN chmod +x ./auxprogs/*
 RUN chmod +x autogen.sh
 RUN ./autogen.sh && ./configure --prefix=`pwd`/inst && make install
 
-# Init container
+# Copy SPEC tools' runners
+COPY spec/lbm.sh /usr/local/bin/spec/lbm.sh
+RUN sed -i 's/\r$//' /usr/local/bin/spec/lbm.sh
+RUN chmod +x /usr/local/bin/spec/lbm.sh
+
+# Copy meny
 COPY menu.sh /usr/local/bin/menu.sh
 RUN sed -i 's/\r$//' /usr/local/bin/menu.sh
 RUN chmod +x /usr/local/bin/menu.sh
 
-COPY lbm.sh /usr/local/bin/lbm.sh
-RUN sed -i 's/\r$//' /usr/local/bin/lbm.sh
-RUN chmod +x /usr/local/bin/lbm.sh
+# Run menu on container init
 CMD ["/usr/local/bin/menu.sh"]

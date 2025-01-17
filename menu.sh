@@ -3,7 +3,7 @@
 while true; do
     echo "Select an option:"
     echo "1. Test blender"
-    echo "2. Run lbm avoiding runspec"
+    echo "2. Test lbm avoiding runspec"
     echo "3. Run bash"
     echo "4. Test alloc.c"
     echo "5. Exit"
@@ -17,7 +17,7 @@ while true; do
             /bin/bash
             ;;
         2)
-            /usr/local/bin/lbm.sh
+            /usr/local/bin/spec/lbm.sh
             /bin/bash
             ;;
         3)
