@@ -361,9 +361,11 @@ static INLINE void memlog_fini(void) {
     VG_(HT_ResetIter)(blocks);
     while ((node = VG_(HT_Next)(blocks))) {
       BlockNode* block_node = (BlockNode*)node;
+      if (block_node->size > MIN_BLOCK_SIZE) {
       VG_(printf)("Start 0x%lx, size %d\n", block_node->start, block_node->size);
       VG_(pp_ExeContext)(block_node->allocation_site);
       VG_(printf)("\n");
+      }
     }
 
     VG_(HT_destruct) (blocks, VG_(free));
