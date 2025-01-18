@@ -53,176 +53,6 @@
 #include "mc_include.h"
 #include "memcheck.h"   /* for client requests */
 
-/* Memlog */
-#define MAX_LOG_ENTRIES 16384
-#define MIN_BLOCK_SIZE 4096
-
-typedef struct {
-   Addr        addr;
-   HWord       value;
-} LogEntry;
-
-typedef struct {
-   void*          next;
-   UWord          key;
-   Addr           start;
-   SizeT          size;
-   ExeContext*    allocation_site;
-} BlockNode;
-
-static LogEntry log_buffer[MAX_LOG_ENTRIES];
-static Int log_count = 0;
-static VgHashTable *blocks = NULL; 
-
-static void memlog_init(void) 
-{
-   blocks = VG_(HT_construct)("blocks");
-}
-
-static void flush_log_buffer(void)
-{
-   for (Int i = 0; i < log_count; i++) {
-      VG_(printf)("0x%lx 0x%lx\n", log_buffer[i].addr, log_buffer[i].value);
-   }
-   log_count = 0;
-}
-
-static void print(Addr addr, HWord value)
-{
-   log_buffer[log_count].addr       = addr;
-   log_buffer[log_count].value      = value;
-   log_count++;
-   if (log_count >= MAX_LOG_ENTRIES) {
-      flush_log_buffer();
-   }
-}
-
-static BlockNode* find_block(Addr addr)
-{
-    VgHashNode *node = NULL;
-    if (blocks) {
-      VG_(HT_ResetIter)(blocks);
-      while ((node = VG_(HT_Next)(blocks))) {
-         BlockNode* block_node = (BlockNode*)node;
-         if (block_node->start <= addr && addr <= block_node->start + block_node->size) {
-             return block_node;
-         }
-      }
-    }
-    
-    return NULL;
-}
-
-static void log_store(Addr addr, HWord value) {
-   BlockNode* existing_block = find_block(addr);
-
-   if (!existing_block) {
-      AddrInfo ai;
-      ai.tag = Addr_Undescribed;
-      describe_addr(VG_(current_DiEpoch)(), addr, &ai);
-
-      if (ai.tag == Addr_Block) {
-         Addr block_start = addr - ai.Addr.Block.rwoffset;
-         BlockNode* new_block = VG_(malloc)("blocks.node", sizeof(BlockNode));
-         new_block->next = NULL;
-         new_block->key = block_start;
-         new_block->start = block_start;
-         new_block->size = ai.Addr.Block.block_szB;
-         new_block->allocation_site = ai.Addr.Block.allocated_at;
-         VG_(HT_add_node)(blocks, new_block);
-         existing_block = new_block;
-      }
-   }
-
-   if (existing_block && existing_block->size > MIN_BLOCK_SIZE) {
-      print(addr, value);
-   } 
-}
-
-static void memlog_fini(void) {
-    VG_(printf)("\n=== Allocation sites ===\n");
-    
-    VgHashNode *node;
-    VG_(HT_ResetIter)(blocks);
-    while ((node = VG_(HT_Next)(blocks))) {
-      BlockNode* block_node = (BlockNode*)node;
-      VG_(printf)("Start 0x%lx, size %d\n", block_node->start, block_node->size);
-      VG_(pp_ExeContext)(block_node->allocation_site);
-      VG_(printf)("\n");
-    }
-
-    VG_(HT_destruct) (blocks, VG_(free));
-}
-
-IRSB* mc_instrument(VgCallbackClosure* closure,
-                   IRSB* bb_in,
-                   VexGuestLayout* layout,
-                   VexGuestExtents* vge,
-                   IRType gWordTy,
-                   IRType hWordTy) {
-   IRSB* bb_out = deepCopyIRSBExceptStmts(bb_in);
-   IRTemp addr_tmp, data_tmp;
-   
-   for (Int i = 0; i < bb_in->stmts_used; i++) {
-      IRStmt* stmt = bb_in->stmts[i];
-      if (!stmt) continue;
-
-      if (stmt->tag == Ist_Store) {
-         IRExpr* data = stmt->Ist.Store.data;
-         IRExpr* addr = stmt->Ist.Store.addr;
-         addr_tmp = newIRTemp(bb_out->tyenv, Ity_I64);
-         data_tmp = newIRTemp(bb_out->tyenv, Ity_I64);
-         IRExpr* data_widen = NULL;
-         IRType ty = typeOfIRExpr(bb_in->tyenv, data);
-         switch (ty) {
-            case Ity_I1:
-               data_widen = IRExpr_Unop(Iop_1Uto64, data);
-               break;
-            case Ity_I8:
-               data_widen = IRExpr_Unop(Iop_8Uto64, data); 
-               break;
-            case Ity_I16:
-               data_widen = IRExpr_Unop(Iop_16Uto64, data);
-               break;
-            case Ity_I32:
-               data_widen = IRExpr_Unop(Iop_32Uto64, data);
-               break;
-            case Ity_I64:
-               data_widen = data;
-               break;           
-            case Ity_F32:
-               data_widen = IRExpr_Unop(Iop_F32toI64U, data);
-               break;
-            case Ity_F64:
-               data_widen = IRExpr_Unop(Iop_F64toI64U, data);
-               break;
-            case Ity_I128:
-            case Ity_F16:
-            case Ity_D32:
-            case Ity_D64:
-            case Ity_D128:
-            case Ity_F128:
-            case Ity_V128:
-            case Ity_V256:
-               // TODO
-               break;
-         }
-         if (data_widen) {
-            addStmtToIRSB(bb_out, IRStmt_WrTmp(addr_tmp, addr));
-            addStmtToIRSB(bb_out, IRStmt_WrTmp(data_tmp, data_widen));
-            IRDirty* dirty = unsafeIRDirty_0_N(0, "log_store", VG_(fnptr_to_fnentry)(log_store), mkIRExprVec_2(IRExpr_RdTmp(addr_tmp), IRExpr_RdTmp(data_tmp)));
-            addStmtToIRSB(bb_out, IRStmt_Dirty(dirty));
-         }
-      }
-
-      addStmtToIRSB(bb_out, stmt);
-   }
-   
-   return bb_out;
-}
-
-/* End Memlog */
-
 /* Set to 1 to do a little more sanity checking */
 #define VG_DEBUG_MEMORY 0
 
@@ -437,6 +267,176 @@ static void ocache_sarp_Clear_Origins ( Addr, UWord ); /* fwds */
 // Paranoia:  it's critical for performance that the requested inlining
 // occurs.  So try extra hard.
 #define INLINE    inline __attribute__((always_inline))
+
+/* Memlog */
+#define MAX_LOG_ENTRIES 16384
+#define MIN_BLOCK_SIZE 4096
+
+typedef struct {
+   Addr        addr;
+   HWord       value;
+} LogEntry;
+
+typedef struct {
+   void*          next;
+   UWord          key;
+   Addr           start;
+   SizeT          size;
+   ExeContext*    allocation_site;
+} BlockNode;
+
+static LogEntry log_buffer[MAX_LOG_ENTRIES];
+static Int log_count = 0;
+static VgHashTable *blocks = NULL; 
+
+static INLINE void memlog_init(void) 
+{
+   blocks = VG_(HT_construct)("blocks");
+}
+
+static INLINE void flush_log_buffer(void)
+{
+   for (Int i = 0; i < log_count; i++) {
+      VG_(printf)("0x%lx 0x%lx\n", log_buffer[i].addr, log_buffer[i].value);
+   }
+   log_count = 0;
+}
+
+static INLINE void print(Addr addr, HWord value)
+{
+   log_buffer[log_count].addr       = addr;
+   log_buffer[log_count].value      = value;
+   log_count++;
+   if (log_count >= MAX_LOG_ENTRIES) {
+      flush_log_buffer();
+   }
+}
+
+static INLINE BlockNode* find_block(Addr addr)
+{
+    VgHashNode *node = NULL;
+    if (blocks) {
+      VG_(HT_ResetIter)(blocks);
+      while ((node = VG_(HT_Next)(blocks))) {
+         BlockNode* block_node = (BlockNode*)node;
+         if (block_node->start <= addr && addr <= block_node->start + block_node->size) {
+             return block_node;
+         }
+      }
+    }
+    
+    return NULL;
+}
+
+static INLINE void log_store(Addr addr, HWord value) {
+   BlockNode* existing_block = find_block(addr);
+
+   if (!existing_block) {
+      AddrInfo ai;
+      ai.tag = Addr_Undescribed;
+      describe_addr(VG_(current_DiEpoch)(), addr, &ai);
+
+      if (ai.tag == Addr_Block) {
+         Addr block_start = addr - ai.Addr.Block.rwoffset;
+         BlockNode* new_block = VG_(malloc)("blocks.node", sizeof(BlockNode));
+         new_block->next = NULL;
+         new_block->key = block_start;
+         new_block->start = block_start;
+         new_block->size = ai.Addr.Block.block_szB;
+         new_block->allocation_site = ai.Addr.Block.allocated_at;
+         VG_(HT_add_node)(blocks, new_block);
+         existing_block = new_block;
+      }
+   }
+
+   if (existing_block && existing_block->size > MIN_BLOCK_SIZE) {
+      print(addr, value);
+   } 
+}
+
+static INLINE void memlog_fini(void) {
+    VG_(printf)("\n=== Allocation sites ===\n");
+    
+    VgHashNode *node;
+    VG_(HT_ResetIter)(blocks);
+    while ((node = VG_(HT_Next)(blocks))) {
+      BlockNode* block_node = (BlockNode*)node;
+      VG_(printf)("Start 0x%lx, size %d\n", block_node->start, block_node->size);
+      VG_(pp_ExeContext)(block_node->allocation_site);
+      VG_(printf)("\n");
+    }
+
+    VG_(HT_destruct) (blocks, VG_(free));
+}
+
+IRSB* mc_instrument(VgCallbackClosure* closure,
+                   IRSB* bb_in,
+                   VexGuestLayout* layout,
+                   VexGuestExtents* vge,
+                   IRType gWordTy,
+                   IRType hWordTy) {
+   IRSB* bb_out = deepCopyIRSBExceptStmts(bb_in);
+   IRTemp addr_tmp, data_tmp;
+   
+   for (Int i = 0; i < bb_in->stmts_used; i++) {
+      IRStmt* stmt = bb_in->stmts[i];
+      if (!stmt) continue;
+
+      if (stmt->tag == Ist_Store) {
+         IRExpr* data = stmt->Ist.Store.data;
+         IRExpr* addr = stmt->Ist.Store.addr;
+         addr_tmp = newIRTemp(bb_out->tyenv, Ity_I64);
+         data_tmp = newIRTemp(bb_out->tyenv, Ity_I64);
+         IRExpr* data_widen = NULL;
+         IRType ty = typeOfIRExpr(bb_in->tyenv, data);
+         switch (ty) {
+            case Ity_I1:
+               data_widen = IRExpr_Unop(Iop_1Uto64, data);
+               break;
+            case Ity_I8:
+               data_widen = IRExpr_Unop(Iop_8Uto64, data); 
+               break;
+            case Ity_I16:
+               data_widen = IRExpr_Unop(Iop_16Uto64, data);
+               break;
+            case Ity_I32:
+               data_widen = IRExpr_Unop(Iop_32Uto64, data);
+               break;
+            case Ity_I64:
+               data_widen = data;
+               break;           
+            case Ity_F32:
+               data_widen = IRExpr_Unop(Iop_F32toI64U, data);
+               break;
+            case Ity_F64:
+               data_widen = IRExpr_Unop(Iop_F64toI64U, data);
+               break;
+            case Ity_I128:
+            case Ity_F16:
+            case Ity_D32:
+            case Ity_D64:
+            case Ity_D128:
+            case Ity_F128:
+            case Ity_V128:
+            case Ity_V256:
+               // TODO
+               break;
+         }
+         if (data_widen) {
+            addStmtToIRSB(bb_out, IRStmt_WrTmp(addr_tmp, addr));
+            addStmtToIRSB(bb_out, IRStmt_WrTmp(data_tmp, data_widen));
+            IRDirty* dirty = unsafeIRDirty_0_N(0, "log_store", VG_(fnptr_to_fnentry)(log_store), mkIRExprVec_2(IRExpr_RdTmp(addr_tmp), IRExpr_RdTmp(data_tmp)));
+            addStmtToIRSB(bb_out, IRStmt_Dirty(dirty));
+         }
+      }
+
+      addStmtToIRSB(bb_out, stmt);
+   }
+   
+   return bb_out;
+}
+
+/* End Memlog */
 
 static INLINE Addr start_of_this_sm ( Addr a ) {
    return (a & (~SM_MASK));
