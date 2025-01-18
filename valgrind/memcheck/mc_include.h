@@ -29,7 +29,7 @@
 
 #ifndef __MC_INCLUDE_H
 #define __MC_INCLUDE_H
-#include "pub_tool_addrinfo.h"
+#include "pub_tool_addrinfo.h" // For Memlog
 #define MC_(str)    VGAPPEND(vgMemCheck_,str)
 
 
