@@ -17,5 +17,11 @@ go 508.namd run
 go 508.namd run run_base_test_mytest-m64.0000
 cp ../../build/build_base_mytest-m64.0000/namd_r .
 echo "Testing namd avoiding runspec..."
-/opt/valgrind/inst/bin/valgrind --tool=memcheck --log-file=/tmp/memlog.log --undef-value-errors=no -- ./namd_r --input apoa1.input --iterations 1 --output namd.out
+/opt/valgrind/inst/bin/valgrind \
+  --tool=memcheck \
+  --leak-check=no \
+  --track-origins=no \
+  --log-file=/tmp/memlog.log \
+  --undef-value-errors=no \
+  -- ./namd_r --input apoa1.input --iterations 1 --output namd.out
 echo "Done. Analyze /tmp/memlog.log"

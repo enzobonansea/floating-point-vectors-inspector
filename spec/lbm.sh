@@ -17,5 +17,11 @@ go 519.lbm run
 go 519.lbm run run_base_test_mytest-m64.0000
 cp ../../build/build_base_mytest-m64.0000/lbm_r .
 echo "Testing lbm avoiding runspec..."
-/opt/valgrind/inst/bin/valgrind --tool=memcheck --log-file=/tmp/memlog.log --undef-value-errors=no -- ./lbm_r 1 reference.dat 0 1 100_100_130_cf_a.of
+/opt/valgrind/inst/bin/valgrind \
+  --tool=memcheck \
+  --leak-check=no \
+  --track-origins=no \
+  --log-file=/tmp/memlog.log \
+  --undef-value-errors=no \
+  -- ./lbm_r 1 reference.dat 0 1 100_100_130_cf_a.of
 echo "Done. Analyze /tmp/memlog.log"
