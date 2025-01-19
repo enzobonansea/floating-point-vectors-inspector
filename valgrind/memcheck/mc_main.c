@@ -314,17 +314,25 @@ static INLINE void print(Addr addr, HWord value)
 
 static INLINE BlockNode* find_block(Addr addr)
 {
+    // Attempt O(1) exact address lookup
+    BlockNode* exact_block = (BlockNode*) VG_(HT_Find)(blocks, addr);
+    if (exact_block != NULL) {
+        return exact_block;
+    }
+
+    // Fallback to O(n) range search if no exact match is found
     VgHashNode *node = NULL;
     if (blocks) {
-      VG_(HT_ResetIter)(blocks);
-      while ((node = VG_(HT_Next)(blocks))) {
-         BlockNode* block_node = (BlockNode*)node;
-         if (block_node->start <= addr && addr <= block_node->start + block_node->size) {
-             return block_node;
-         }
-      }
+        VG_(HT_ResetIter)(blocks);
+        while ((node = VG_(HT_Next)(blocks))) {
+            BlockNode* block_node = (BlockNode*)node;
+            if (block_node->start <= addr && addr <= block_node->start + block_node->size) {
+                return block_node;
+            }
+        }
     }
-    
+
+    // Return NULL if no matching block is found
     return NULL;
 }
 
