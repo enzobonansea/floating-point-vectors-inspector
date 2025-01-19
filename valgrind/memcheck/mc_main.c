@@ -315,7 +315,7 @@ static INLINE void print(Addr addr, HWord value)
 static INLINE BlockNode* find_block(Addr addr)
 {
     // Attempt O(1) exact address lookup
-    BlockNode* exact_block = (BlockNode*) VG_(HT_Find)(blocks, addr);
+    BlockNode* exact_block = (BlockNode*) VG_(HT_lookup)(blocks, addr);
     if (exact_block != NULL) {
         return exact_block;
     }
