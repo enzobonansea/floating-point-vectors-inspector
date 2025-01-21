@@ -11,9 +11,8 @@ RUN mkdir -p /usr/cpu2017 \
     && rm /opt/spec/cpu2017.iso
 
 # Add test programs
-COPY alloc.c /tmp/alloc.c
-RUN gcc -O0 -g -o /tmp/alloc /tmp/alloc.c
-COPY example.py /tmp/example.py
+COPY alloc.c /usr/alloc.c
+RUN gcc -O0 -g -o /usr/alloc /usr/alloc.c
 
 # Install custom valgrind
 ADD valgrind /opt/valgrind

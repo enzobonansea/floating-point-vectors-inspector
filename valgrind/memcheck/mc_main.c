@@ -393,7 +393,7 @@ static INLINE Bool is_app_code(VexGuestExtents* vge)
       const NSegment* seg = VG_(am_find_nsegment)(addr);
       if (seg) {
          const HChar* filename = VG_(am_get_filename)(seg);
-         vge_has_app_code = VG_(strstr)(filename, "cpu2017") != NULL;
+         vge_has_app_code = VG_(strncmp)(filename, "/usr", 4) == 0;
       }
    }
 
