@@ -5,9 +5,10 @@ while true; do
     echo "1. Test blender"
     echo "2. Test lbm avoiding runspec"
     echo "3. Test namd avoiding runspec"
-    echo "4. Run bash"
-    echo "5. Test alloc.c"
-    echo "6. Exit"
+    echo "4. Test bwaves avoiding runspec"
+    echo "5. Run bash"
+    echo "6. Test alloc.c"
+    echo "7. Exit"
     read -p "Enter your choice: " choice
 
     case $choice in
@@ -26,16 +27,20 @@ while true; do
             /bin/bash
             ;;
         4)
+            /usr/local/bin/spec/bwaves.sh
+            /bin/bash
+            ;;
+        5)
             bash
             exit 0
             ;;
-        5)
+        6)
             echo "Testing alloc.c ..."
             inst/bin/valgrind --tool=memcheck --log-file=/tmp/memlog.log --undef-value-errors=no -- /tmp/alloc
             echo "Analyze /tmp/memlog.log"
             /bin/bash
             ;;
-        6)
+        7)
             echo "Exiting..."
             exit 0
             ;;
