@@ -1,7 +1,7 @@
 # Setup
 FROM ubuntu:20.04
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y build-essential wget gcc make libncurses5-dev libncursesw5-dev autotools-dev automake autoconf libtool nano libc6-dbg grep blender alsa-utils libarchive-tools gfortran
+RUN apt-get update && apt-get install -y build-essential wget gcc make libncurses5-dev libncursesw5-dev autotools-dev automake autoconf libtool nano libc6-dbg grep libarchive-tools gfortran
 
 # SPEC
 COPY cpu2017-1.1.9.iso /opt/spec/cpu2017.iso
