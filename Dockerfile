@@ -1,7 +1,7 @@
 # Setup
 FROM ubuntu:20.04
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y build-essential wget gcc make libncurses5-dev libncursesw5-dev autotools-dev automake autoconf libtool nano libc6-dbg grep libarchive-tools
+RUN apt-get update && apt-get install -y build-essential wget gcc make libncurses5-dev libncursesw5-dev autotools-dev automake autoconf libtool nano libc6-dbg grep libarchive-tools gfortran
 
 # SPEC
 COPY cpu2017-1.1.9.iso /opt/spec/cpu2017.iso
@@ -29,6 +29,9 @@ RUN chmod +x /usr/local/bin/spec/lbm.sh
 COPY spec/namd.sh /usr/local/bin/spec/namd.sh
 RUN sed -i 's/\r$//' /usr/local/bin/spec/namd.sh
 RUN chmod +x /usr/local/bin/spec/namd.sh
+COPY spec/bwaves.sh /usr/local/bin/spec/bwaves.sh
+RUN sed -i 's/\r$//' /usr/local/bin/spec/bwaves.sh
+RUN chmod +x /usr/local/bin/spec/bwaves.sh
 
 # Copy meny
 COPY menu.sh /usr/local/bin/menu.sh
