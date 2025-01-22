@@ -376,6 +376,8 @@ static INLINE void memlog_fini(void) {
     VG_(HT_ResetIter)(blocks);
     while ((node = VG_(HT_Next)(blocks))) {
       BlockNode* block_node = (BlockNode*)node;
+      // Avoid those nodes that aren't actually a Block but they are into the hash table for 
+      // reducing the quantity of calls to describe_addr in log_store an thus increase the tool's throughput
       if (block_node->allocation_site && block_node->size > MIN_BLOCK_SIZE) {
          VG_(printf)("Start 0x%lx, size %d\n", block_node->start, block_node->size);
          VG_(pp_ExeContext)(block_node->allocation_site);
