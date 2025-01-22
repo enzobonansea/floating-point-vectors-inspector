@@ -23,5 +23,6 @@ echo "Testing lbm avoiding runspec..."
   --track-origins=no \
   --log-file=/tmp/memlog.log \
   --undef-value-errors=no \
+  --time-stamp=yes \
   -- ./lbm_r 1 reference.dat 0 1 100_100_130_cf_a.of
 echo "Done. Analyze /tmp/memlog.log"

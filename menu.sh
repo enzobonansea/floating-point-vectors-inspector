@@ -14,7 +14,7 @@ while true; do
     case $choice in
         1)
             echo "Testing alloc.c ..."
-            inst/bin/valgrind --tool=memcheck --log-file=/tmp/memlog.log --undef-value-errors=no -- /usr/alloc
+            inst/bin/valgrind --tool=memcheck --leak-check=no --track-origins=no --log-file=/tmp/memlog.log --undef-value-errors=no --time-stamp=yes -- /usr/alloc
             echo "Analyze /tmp/memlog.log"
             /bin/bash
             ;;

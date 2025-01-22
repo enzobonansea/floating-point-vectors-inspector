@@ -23,5 +23,6 @@ echo "Testing bwaves avoiding runspec..."
   --track-origins=no \
   --log-file=/tmp/memlog.log \
   --undef-value-errors=no \
+  --time-stamp=yes \
   -- ./bwaves_r bwaves_2 < bwaves_2.in > bwaves_2.out
 echo "Done. Analyze /tmp/memlog.log"

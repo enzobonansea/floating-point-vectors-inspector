@@ -23,5 +23,6 @@ echo "Testing namd avoiding runspec..."
   --track-origins=no \
   --log-file=/tmp/memlog.log \
   --undef-value-errors=no \
+  --time-stamp=yes \
   -- ./namd_r --input apoa1.input --iterations 1 --output namd.out
 echo "Done. Analyze /tmp/memlog.log"
