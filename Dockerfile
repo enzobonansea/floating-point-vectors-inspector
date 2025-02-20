@@ -26,12 +26,18 @@ RUN ./autogen.sh && ./configure --prefix=`pwd`/inst && make install
 COPY spec/lbm.sh /usr/local/bin/spec/lbm.sh
 RUN sed -i 's/\r$//' /usr/local/bin/spec/lbm.sh
 RUN chmod +x /usr/local/bin/spec/lbm.sh
+
 COPY spec/namd.sh /usr/local/bin/spec/namd.sh
 RUN sed -i 's/\r$//' /usr/local/bin/spec/namd.sh
 RUN chmod +x /usr/local/bin/spec/namd.sh
+
 COPY spec/bwaves.sh /usr/local/bin/spec/bwaves.sh
 RUN sed -i 's/\r$//' /usr/local/bin/spec/bwaves.sh
 RUN chmod +x /usr/local/bin/spec/bwaves.sh
+
+COPY spec/nab.sh /usr/local/bin/spec/nab.sh
+RUN sed -i 's/\r$//' /usr/local/bin/spec/nab.sh
+RUN chmod +x /usr/local/bin/spec/nab.sh
 
 # Copy meny
 COPY menu.sh /usr/local/bin/menu.sh
