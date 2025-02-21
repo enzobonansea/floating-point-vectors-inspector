@@ -271,7 +271,7 @@ static void ocache_sarp_Clear_Origins ( Addr, UWord ); /* fwds */
 /* Memlog */
 #define MAX_LOG_ENTRIES 30000000
 #define PAGE_SIZE 4096
-#define MIN_BLOCK_SIZE 64*PAGE_SIZE // TODO: this should be a tool's parameter
+#define MIN_BLOCK_SIZE 1*PAGE_SIZE // TODO: this should be a tool's parameter
 
 typedef struct {
    Addr        addr;
