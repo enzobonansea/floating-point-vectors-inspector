@@ -470,11 +470,12 @@ static INLINE IRSB* wire_memlog(IRSB* bb_in)
 }
 
 IRSB* mc_instrument(VgCallbackClosure* closure,
-                   IRSB* bb_in,
-                   VexGuestLayout* layout,
-                   VexGuestExtents* vge,
-                   IRType gWordTy,
-                   IRType hWordTy) {
+   IRSB* bb_in,
+   const VexGuestLayout* layout,
+   const VexGuestExtents* vge,
+   const VexArchInfo* archinfo_host,
+   IRType gWordTy,
+   IRType hWordTy) {
    return is_app_code(vge) ? wire_memlog(bb_in) : bb_in;
 }
 
