@@ -25,6 +25,5 @@ cd /usr/cpu2017/benchspec/CPU/644.nab_s/build/build_base_mytest-m64.0000
   --track-origins=no \
   --log-file=/tmp/memlog.log \
   --undef-value-errors=no \
-  --time-stamp=yes \
   -- ./nab_s hkrdenq 20140317 1
 echo "Done. Analyze /tmp/memlog.log"
