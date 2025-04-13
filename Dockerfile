@@ -39,6 +39,10 @@ COPY spec/nab.sh /usr/local/bin/spec/nab.sh
 RUN sed -i 's/\r$//' /usr/local/bin/spec/nab.sh
 RUN chmod +x /usr/local/bin/spec/nab.sh
 
+COPY spec/wrf.sh /usr/local/bin/spec/wrf.sh
+RUN sed -i 's/\r$//' /usr/local/bin/spec/wrf.sh
+RUN chmod +x /usr/local/bin/spec/wrf.sh
+
 # Copy meny
 COPY menu.sh /usr/local/bin/menu.sh
 RUN sed -i 's/\r$//' /usr/local/bin/menu.sh

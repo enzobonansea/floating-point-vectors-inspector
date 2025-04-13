@@ -9,6 +9,7 @@ while true; do
     echo "5. Test namd avoiding runspec"
     echo "6. Test bwaves avoiding runspec"
     echo "7. Test nab avoiding runspec"
+    echo "8. Test wrf avoiding runspec"
 
     read -p "Enter your choice: " choice
 
@@ -41,6 +42,10 @@ while true; do
             ;;
         7)
             /usr/local/bin/spec/nab.sh
+            /bin/bash
+            ;;
+        8)
+            /usr/local/bin/spec/wrf.sh
             /bin/bash
             ;;
         *)
