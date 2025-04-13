@@ -17,13 +17,14 @@ go 644.nab run
 go 644.nab run run_base_test_mytest-m64.0000
 cp ../../build/build_base_mytest-m64.0000/nab_s .
 echo "Testing nab_s avoiding runspec..."
-cp -r /usr/cpu2017/benchspec/CPU/544.nab_r/data/test/input/hkrdenq /usr/cpu2017/benchspec/CPU/644.nab_s/build/build_base_mytest-m64.0000
+cp -r /usr/cpu2017/benchspec/CPU/544.nab_r/data/test/input/3j1n /usr/cpu2017/benchspec/CPU/644.nab_s/build/build_base_mytest-m64.0000
 cd /usr/cpu2017/benchspec/CPU/644.nab_s/build/build_base_mytest-m64.0000
 /opt/valgrind/inst/bin/valgrind \
   --tool=memcheck \
   --leak-check=no \
-  --track-origins=no \
+nano ~/.ssh/config  --track-origins=no \
   --log-file=/tmp/memlog.log \
   --undef-value-errors=no \
-  -- ./nab_s hkrdenq 20140317 1
+  --time-stamp=yes \
+  -- ./nab_s 3j1n 20140317 1
 echo "Done. Analyze /tmp/memlog.log"
