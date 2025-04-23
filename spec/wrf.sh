@@ -3,7 +3,7 @@ cd cpu2017/
 source shrc
 cd config
 cp Example-gcc-linux-x86.cfg my_test.cfg
-runcpu --fake --loose --size test --tune base --config my_test 521.wrf_r
+runcpu --fake --loose --size test --tune base --config my_test --define GCCge10 521.wrf_r
 cd $SPEC
 cd result/
 go 521.wrf build
@@ -19,7 +19,7 @@ cp ../../build/build_base_mytest-m64.0000/wrf_r .
 echo "Testing wrf_r avoiding runspec..."
 cd /usr/cpu2017/benchspec/CPU/521.wrf_r/build/build_base_mytest-m64.0000
 cp /usr/cpu2017/benchspec/CPU/521.wrf_r/run/run_base_test_mytest-m64.0000/* .
-screen -S wrf_test
+# screen -S wrf_test
 /opt/valgrind/inst/bin/valgrind \
   --tool=memcheck \
   --leak-check=no \
