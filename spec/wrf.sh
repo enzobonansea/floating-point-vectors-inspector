@@ -19,7 +19,6 @@ cp ../../build/build_base_mytest-m64.0000/wrf_r .
 echo "Testing wrf_r avoiding runspec..."
 cd /usr/cpu2017/benchspec/CPU/521.wrf_r/build/build_base_mytest-m64.0000
 cp /usr/cpu2017/benchspec/CPU/521.wrf_r/run/run_base_test_mytest-m64.0000/* .
-# screen -S wrf_test
 /opt/valgrind/inst/bin/valgrind \
   --tool=memcheck \
   --leak-check=no \
