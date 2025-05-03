@@ -43,6 +43,10 @@ COPY spec/wrf.sh /usr/local/bin/spec/wrf.sh
 RUN sed -i 's/\r$//' /usr/local/bin/spec/wrf.sh
 RUN chmod +x /usr/local/bin/spec/wrf.sh
 
+COPY spec/fotonik.sh /usr/local/bin/spec/fotonik.sh
+RUN sed -i 's/\r$//' /usr/local/bin/spec/fotonik.sh
+RUN chmod +x /usr/local/bin/spec/fotonik.sh
+
 # Copy meny
 COPY menu.sh /usr/local/bin/menu.sh
 RUN sed -i 's/\r$//' /usr/local/bin/menu.sh
