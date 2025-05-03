@@ -3,7 +3,7 @@ Copyright 1995-2019 Standard Performance Evaluation Corporation (SPEC)
 
 runcpu v6612
 Using 'linux-x86_64' tools
-Reading file manifests... read 32351 entries from 2 files in 0.29s (110189 files/s)
+Reading file manifests... read 32351 entries from 2 files in 0.30s (109594 files/s)
 Loading runcpu modules.................
 Locating benchmarks...found 47 benchmarks in 73 benchsets.
 Reading config file '/usr/cpu2017/config/my_test.cfg'
@@ -37,7 +37,7 @@ Benchmarks selected: 549.fotonik3d_r
 %% of each command section.)
 
 Compiling Binaries
-  Building 549.fotonik3d_r base mytest-m64: (build_base_mytest-m64.0000) [2025-05-03 17:44:09]
+  Building 549.fotonik3d_r base mytest-m64: (build_base_mytest-m64.0000) [2025-05-03 17:55:03]
 specmake -n --output-sync --jobs=8 clean
 %% Fake commands from make.clean (specmake -n --output-sync --jobs=8 clean):
 rm -rf *.o  pscyee.out
@@ -146,7 +146,7 @@ Build errors for fprate: None
 Setting Up Run Directories
   Setting up 549.fotonik3d_r test base mytest-m64 (1 copy): run_base_test_mytest-m64.0000
 Running Benchmarks
-  Running 549.fotonik3d_r test base mytest-m64 (1 copy) [2025-05-03 17:44:10]
+  Running 549.fotonik3d_r test base mytest-m64 (1 copy) [2025-05-03 17:55:05]
 Benchmark invocation
 --------------------
 /usr/cpu2017/bin/specinvoke -d /usr/cpu2017/benchspec/CPU/549.fotonik3d_r/run/run_base_test_mytest-m64.0000 -f speccmds.cmd -q -e speccmds.err -o speccmds.stdout -nn
@@ -179,14 +179,14 @@ SHELL=/bin/bash
 SPEC=/usr/cpu2017
 SPECDB_PWD=/usr/cpu2017/config
 SPECPERLLIB=/usr/cpu2017/bin/lib:/usr/cpu2017/bin
-SSH_CLIENT='10.1.10.2 57202 22'
-SSH_CONNECTION='10.1.10.2 57202 10.1.10.163 22'
-SSH_TTY=/dev/pts/1
+SSH_CLIENT='10.1.10.2 57556 22'
+SSH_CONNECTION='10.1.10.2 57556 10.1.10.163 22'
+SSH_TTY=/dev/pts/0
 TERM=xterm-256color
 USER=root
 XDG_RUNTIME_DIR=/run/user/0
 XDG_SESSION_CLASS=user
-XDG_SESSION_ID=1423
+XDG_SESSION_ID=1424
 XDG_SESSION_TYPE=tty
 _CE_CONDA=''
 _CE_M=''
@@ -196,9 +196,9 @@ export LC_LANG LD_LIBRARY_PATH LIBC_FATAL_STDERR_ LOGNAME MOTD_SHOWN OLDPWD
 export OMP_NUM_THREADS OMP_THREAD_LIMIT PATH SHELL SPEC SPECDB_PWD SPECPERLLIB
 export SSH_CLIENT SSH_CONNECTION SSH_TTY TERM USER XDG_RUNTIME_DIR
 export XDG_SESSION_CLASS XDG_SESSION_ID XDG_SESSION_TYPE _CE_CONDA _CE_M
-unset _
-unset PWD
 unset SHLVL
+unset PWD
+unset _
 # Starting run for copy #0
 cd /usr/cpu2017/benchspec/CPU/549.fotonik3d_r/run/run_base_test_mytest-m64.0000
 ../run_base_test_mytest-m64.0000/fotonik3d_r_base.mytest-m64 > fotonik3d_r.log 2>> fotonik3d_r.err
@@ -237,14 +237,14 @@ SHELL=/bin/bash
 SPEC=/usr/cpu2017
 SPECDB_PWD=/usr/cpu2017/config
 SPECPERLLIB=/usr/cpu2017/bin/lib:/usr/cpu2017/bin
-SSH_CLIENT='10.1.10.2 57202 22'
-SSH_CONNECTION='10.1.10.2 57202 10.1.10.163 22'
-SSH_TTY=/dev/pts/1
+SSH_CLIENT='10.1.10.2 57556 22'
+SSH_CONNECTION='10.1.10.2 57556 10.1.10.163 22'
+SSH_TTY=/dev/pts/0
 TERM=xterm-256color
 USER=root
 XDG_RUNTIME_DIR=/run/user/0
 XDG_SESSION_CLASS=user
-XDG_SESSION_ID=1423
+XDG_SESSION_ID=1424
 XDG_SESSION_TYPE=tty
 _CE_CONDA=''
 _CE_M=''
@@ -254,8 +254,8 @@ export LC_LANG LD_LIBRARY_PATH LIBC_FATAL_STDERR_ LOGNAME MOTD_SHOWN OLDPWD
 export OMP_NUM_THREADS OMP_THREAD_LIMIT PATH SHELL SPEC SPECDB_PWD SPECPERLLIB
 export SSH_CLIENT SSH_CONNECTION SSH_TTY TERM USER XDG_RUNTIME_DIR
 export XDG_SESSION_CLASS XDG_SESSION_ID XDG_SESSION_TYPE _CE_CONDA _CE_M
-unset PWD
 unset _
+unset PWD
 unset SHLVL
 # Starting run for copy #0
 cd /usr/cpu2017/benchspec/CPU/549.fotonik3d_r/run/run_base_test_mytest-m64.0000
@@ -266,9 +266,9 @@ specinvoke exit: rc=0
 
 
 Success: 1x549.fotonik3d_r
-The log for this run is in /usr/cpu2017/result/CPU2017.023.log
+The log for this run is in /usr/cpu2017/result/CPU2017.024.log
 
-runcpu finished at 2025-05-03 17:44:11; 7 total seconds elapsed
+runcpu finished at 2025-05-03 17:55:05; 7 total seconds elapsed
 /usr/cpu2017/benchspec/CPU/549.fotonik3d_r/build
 rm -rf *.o  pscyee.out
 find . \( -name \*.o -o -name '*.fppized.f*' -o -name '*.i' -o -name '*.mod' \) -print | xargs rm -rf
@@ -317,8 +317,7 @@ Setting up environment for running 644.nab_s...
   Setting up 644.nab_s test base mytest-m64: run_base_test_mytest-m64.0000
 /usr/cpu2017/benchspec/CPU/549.fotonik3d_r/run
 /usr/cpu2017/benchspec/CPU/549.fotonik3d_r/run/run_base_test_mytest-m64.0000
+cp: cannot stat '/usr/cpu2017/build/build_base_mytest-m64.0000/fotonik3d_r': No such file or directory
 Testing fotonik3d avoiding runspec...
-At line 187 of file material.fppized.f90 (unit = 9, file = 'fort.9')
-Fortran runtime error: End of file
-
-Error termination. Backtrace:
+valgrind: ./fotonik3d_r: No such file or directory
+Done. Analyze /tmp/memlog.log
