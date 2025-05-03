@@ -21,8 +21,8 @@ go 549.fotonik3d run run_base_test_mytest-m64.0000
 mkdir -p /tmp/fotonik_custom_run
 cd /tmp/fotonik_custom_run
 
-# Copy the executable
-cp $SPEC/build/build_base_mytest-m64.0000/fotonik3d_r .
+# Copy the executable - CORRECTED PATH
+cp $SPEC/benchspec/CPU/549.fotonik3d_r/build/build_base_mytest-m64.0000/fotonik3d_r .
 
 # Copy all necessary input files (test dataset)
 cp $SPEC/benchspec/CPU/549.fotonik3d_r/data/test/input/* .
