@@ -1,3 +1,4 @@
+exec > fotonik.out 2>&1
 cd /usr/
 cd cpu2017/
 source shrc
