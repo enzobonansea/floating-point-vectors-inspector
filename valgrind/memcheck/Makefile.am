@@ -8,6 +8,7 @@ EXTRA_DIST = docs/mc-manual.xml docs/mc-tech-docs.xml
 
 pkginclude_HEADERS = \
 	memcheck.h
+	rbtree.h
 
 noinst_HEADERS = \
 	mc_include.h
@@ -27,7 +28,8 @@ MEMCHECK_SOURCES_COMMON = \
 	mc_main.c mc_main_asm.c \
 	mc_translate.c \
 	mc_machine.c \
-	mc_errors.c
+	mc_errors.c \
+	rbtree.c
 
 memcheck_@VGCONF_ARCH_PRI@_@VGCONF_OS@_SOURCES      = \
 	$(MEMCHECK_SOURCES_COMMON)
