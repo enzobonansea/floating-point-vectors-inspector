@@ -317,10 +317,35 @@ static INLINE void print(Addr addr, HWord value)
 }
 
 static INLINE void insert_block_rb(BlockNode *b) {
+   /* ---- step 0: create the rb_node that will carry the block ---- */
    rb_node_t *n = VG_(malloc)("blocks.rbnode", sizeof(*n));
-   *n = (rb_node_t){ .key = b->start, .data = b, .color = RED };
-   rb_link_node(n, NULL, &blocks_tree.root);            // start with empty parent
-   rb_insert_color(n, &blocks_tree);
+   *n = (rb_node_t){
+      .parent = NULL, .left = NULL, .right = NULL,
+      .color  = RED,
+      .key    = b->start,   /* <‑‑ key used for ordering      */
+      .data   = b           /* <‑‑ payload: the BlockNode*    */
+   };
+
+   /* ---- step 1: ordinary ordered‑binary‑tree insertion walk ---- */
+   rb_node_t **link  = &blocks_tree.root;   /* pointer to current link */
+   rb_node_t  *parent = NULL;               /* parent node we land under */
+
+   while (*link) {
+      parent = *link;
+      if (n->key < parent->key)
+         link = &parent->left;
+      else if (n->key > parent->key)
+         link = &parent->right;
+      else {
+         /* same start address already present – nothing to do   */
+         VG_(free)(n);
+         return;
+      }
+   }
+
+   /* ---- step 2: hook it in and rebalance ---- */
+   rb_link_node(n, parent, link);       /* fixes child pointer and n->parent */
+   rb_insert_color(n, &blocks_tree);    /* applies RB‑tree fix‑ups          */
 }
 
 static INLINE BlockNode* find_block(Addr addr) {
@@ -333,13 +358,9 @@ static INLINE BlockNode* find_block(Addr addr) {
    return (addr <= cand->start + cand->size) ? cand : NULL;
 }
 
-// --------------------------------------------------
-// 5) Hook the tree‐insert into your log_store
-// --------------------------------------------------
 static INLINE void log_store(Addr addr, HWord value) {
     BlockNode* b = find_block(addr);
     if (!b) {
-        // … allocate & init new BlockNode exactly as before …
         BlockNode* newb = VG_(malloc)("blocks.node", sizeof(*newb));
         newb->next = NULL;
         newb->key   = addr;
