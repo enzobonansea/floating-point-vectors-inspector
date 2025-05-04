@@ -52,6 +52,7 @@
 #include "pub_tool_execontext.h" // For Memlog
 #include "mc_include.h"
 #include "memcheck.h"   /* for client requests */
+#include <string.h>
 
 /* Set to 1 to do a little more sanity checking */
 #define VG_DEBUG_MEMORY 0
