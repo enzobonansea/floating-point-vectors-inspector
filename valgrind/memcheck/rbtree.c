@@ -2,17 +2,19 @@
 #include "rbtree.h"
 #include <stddef.h>
 
-static inline rb_node_t *rb_grandparent(rb_node_t *n) {
+#define INLINE    inline __attribute__((always_inline))
+
+static INLINE rb_node_t *rb_grandparent(rb_node_t *n) {
     return n->parent ? n->parent->parent : NULL;
 }
-static inline rb_node_t *rb_uncle(rb_node_t *n) {
+static INLINE rb_node_t *rb_uncle(rb_node_t *n) {
     rb_node_t *g = rb_grandparent(n);
     if (!g) return NULL;
     return (n->parent == g->left) ? g->right : g->left;
 }
 
 // Left‐rotate at node n
-static void rb_rotate_left(rb_node_t *n, rb_root_t *root) {
+static INLINE void rb_rotate_left(rb_node_t *n, rb_root_t *root) {
     rb_node_t *r = n->right;
     rb_node_t *p = n->parent;
 
@@ -29,7 +31,7 @@ static void rb_rotate_left(rb_node_t *n, rb_root_t *root) {
 }
 
 // Right‐rotate at node n
-static void rb_rotate_right(rb_node_t *n, rb_root_t *root) {
+static INLINE void rb_rotate_right(rb_node_t *n, rb_root_t *root) {
     rb_node_t *l = n->left;
     rb_node_t *p = n->parent;
 
@@ -46,7 +48,7 @@ static void rb_rotate_right(rb_node_t *n, rb_root_t *root) {
 }
 
 // Public: insert‐fixup
-void rb_insert_color(rb_node_t *n, rb_root_t *root) {
+INLINE void rb_insert_color(rb_node_t *n, rb_root_t *root) {
     // standard RB-insert fixup from CLRS
     while (n != root->root && n->parent->color == RED) {
         rb_node_t *u = rb_uncle(n);
@@ -85,7 +87,7 @@ void rb_insert_color(rb_node_t *n, rb_root_t *root) {
 }
 
 // Public: find the node with largest key ≤ given key
-rb_node_t *rb_search_leq(rb_root_t *root, unsigned long key) {
+INLINE rb_node_t *rb_search_leq(rb_root_t *root, unsigned long key) {
     rb_node_t *node = root->root;
     rb_node_t *best = NULL;
     while (node) {
