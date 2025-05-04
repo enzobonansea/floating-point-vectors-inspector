@@ -390,6 +390,21 @@ static INLINE void log_store(Addr addr, HWord value) {
     }
 }
 
+static void free_rb_tree_recursive(rb_node_t *node) {
+   if (!node)
+       return;
+   
+   free_rb_tree_recursive(node->left);
+   free_rb_tree_recursive(node->right);
+
+   VG_(free)(node);
+}
+
+static void free_rb_tree(rb_root_t *root) {
+   free_rb_tree_recursive(root->root);
+   root->root = NULL;
+}
+
 static INLINE void memlog_fini(void) {
    flush_log_buffer();
    
@@ -409,7 +424,7 @@ static INLINE void memlog_fini(void) {
     }
 
     VG_(HT_destruct) (blocks, VG_(free));
-    // TODO: free the rb tree
+    free_rb_tree(&blocks_tree);
 }
 
 static INLINE Bool is_app_code(VexGuestExtents* vge)
