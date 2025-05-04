@@ -1,24 +1,14 @@
 #include "pub_tool_basics.h"
 #include "pub_tool_aspacemgr.h"
-#include "pub_tool_gdbserver.h"
 #include "pub_tool_poolalloc.h"
-#include "pub_tool_hashtable.h"     // For mc_include.h
+#include "pub_tool_hashtable.h"
 #include "pub_tool_libcbase.h"
-#include "pub_tool_libcassert.h"
 #include "pub_tool_libcprint.h"
-#include "pub_tool_machine.h"
 #include "pub_tool_mallocfree.h"
-#include "pub_tool_options.h"
-#include "pub_tool_oset.h"
-#include "pub_tool_rangemap.h"
-#include "pub_tool_replacemalloc.h"
 #include "pub_tool_tooliface.h"
 #include "pub_tool_threadstate.h"
-#include "pub_tool_xarray.h"
-#include "pub_tool_xtree.h"
-#include "pub_tool_xtmemory.h"
 #include "mc_include.h"
-#include "memcheck.h"   /* for client requests */
+#include "memcheck.h"
 #include "memlog.h"
 #include "rbtree.h"
 
@@ -170,7 +160,7 @@ INLINE void memlog_fini(void) {
       // Avoid those nodes that aren't actually a Block but they are into the hash table for 
       // reducing the quantity of calls to describe_addr in log_store an thus increase the tool's throughput
       if (block_node->allocation_site && block_node->size > MIN_BLOCK_SIZE) {
-         VG_(printf)("Start 0x%lx, size %d\n", block_node->start, block_node->size);
+         VG_(printf)("Start 0x%lx, size %ld\n", block_node->start, block_node->size);
          VG_(pp_ExeContext)(block_node->allocation_site);
          VG_(printf)("\n");
       }
@@ -180,7 +170,7 @@ INLINE void memlog_fini(void) {
     free_rb_tree(&blocks_tree);
 }
 
-static INLINE Bool is_app_code(VexGuestExtents* vge)
+static INLINE Bool is_app_code(const VexGuestExtents* vge)
 {
    Bool vge_has_app_code = False;
    for (int i = 0; i < vge->n_used && !vge_has_app_code; i++) {
@@ -242,6 +232,7 @@ static INLINE IRSB* wire_memlog(IRSB* bb_in)
          case Ity_F128:
          case Ity_V128:
          case Ity_V256:
+         case Ity_INVALID:
             // TODO
             break;
          }
@@ -249,7 +240,7 @@ static INLINE IRSB* wire_memlog(IRSB* bb_in)
             addStmtToIRSB(bb_out, IRStmt_WrTmp(addr_tmp, addr));
             addStmtToIRSB(bb_out, IRStmt_WrTmp(data_tmp, data_widen));
             IRDirty* dirty = unsafeIRDirty_0_N(
-               0, "log_store", VG_(fnptr_to_fnentry)(log_store),
+               0, "log_store", (void*)VG_(fnptr_to_fnentry)(log_store),
                mkIRExprVec_2(IRExpr_RdTmp(addr_tmp), IRExpr_RdTmp(data_tmp)));
             addStmtToIRSB(bb_out, IRStmt_Dirty(dirty));
          }
