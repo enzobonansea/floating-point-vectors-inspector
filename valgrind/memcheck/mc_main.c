@@ -479,7 +479,7 @@ static INLINE IRSB* wire_memlog(IRSB* bb_in)
             data_widen = IRExpr_Unop(Iop_F32toI64U, data);
             break;
          case Ity_F64:
-            data_widen = IRExpr_Unop(Iop_ReinterpD64asI64, data);
+            data_widen = data;
             break;
          case Ity_I128:
          case Ity_F16:
