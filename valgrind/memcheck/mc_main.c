@@ -52,7 +52,7 @@
 #include "pub_tool_execontext.h" // For Memlog
 #include "mc_include.h"
 #include "memcheck.h"   /* for client requests */
-#include <string.h>
+#include "rbtree.h"
 
 /* Set to 1 to do a little more sanity checking */
 #define VG_DEBUG_MEMORY 0
@@ -279,17 +279,19 @@ typedef struct {
    HWord       value;
 } LogEntry;
 
-typedef struct {
-   void*          next;
-   UWord          key;
-   Addr           start;
-   SizeT          size;
-   ExeContext*    allocation_site;
+typedef struct BlockNode {
+   struct rb_node        rb;
+   UWord                  key;
+   Addr                  start;
+   SizeT                 size;
+   ExeContext*           allocation_site;
+   struct BlockNode    * next;
 } BlockNode;
 
 static LogEntry log_buffer[MAX_LOG_ENTRIES];
 static Int log_count = 0;
 static VgHashTable *blocks = NULL; 
+static rb_root_t blocks_tree = RB_ROOT;
 
 static INLINE void memlog_init(void) 
 {
@@ -314,104 +316,58 @@ static INLINE void print(Addr addr, HWord value)
    }
 }
 
-static BlockNode **blocks_sorted = NULL;
-static UWord       blocks_sorted_cnt = 0;
-static UWord       blocks_sorted_cap = 0;
-
-// helper: ensure capacity
-static INLINE void ensure_sorted_cap(void) {
-    if (blocks_sorted_cnt + 1 > blocks_sorted_cap) {
-        UWord newcap = (blocks_sorted_cap ? blocks_sorted_cap*2 : 16);
-        blocks_sorted = VG_(realloc)(
-            "blocks.sorted", blocks_sorted,
-            newcap * sizeof(BlockNode*)
-        );
-        blocks_sorted_cap = newcap;
-    }
+static INLINE void insert_block_rb(BlockNode *b) {
+   rb_node_t *n = VG_(malloc)("blocks.rbnode", sizeof(*n));
+   *n = (rb_node_t){ .key = b->start, .data = b, .color = RED };
+   rb_link_node(n, NULL, &blocks_tree.root);            // start with empty parent
+   rb_insert_color(n, &blocks_tree);
 }
 
-// insert new_block into blocks_sorted[], keeping it sorted by start
-static INLINE void insert_sorted_block(BlockNode* new_block) {
-    ensure_sorted_cap();
-    // binary search for insertion index in [0..cnt]
-    UWord lo = 0, hi = blocks_sorted_cnt;
-    while (lo < hi) {
-      UWord mid = lo + (hi - lo)/2;
-        if (blocks_sorted[mid]->start < new_block->start)
-            lo = mid + 1;
-        else
-            hi = mid;
-    }
-    // shift tail up by one
-    if (lo < blocks_sorted_cnt)
-        memmove(&blocks_sorted[lo+1],
-                &blocks_sorted[lo],
-                (blocks_sorted_cnt - lo) * sizeof(BlockNode*));
-    blocks_sorted[lo] = new_block;
-    blocks_sorted_cnt++;
+static INLINE BlockNode* find_block(Addr addr) {
+   BlockNode* exact = (BlockNode*)VG_(HT_lookup)(blocks, addr);
+   if (exact) return exact;
+
+   rb_node_t *n = rb_search_leq(&blocks_tree, (unsigned long)addr);
+   if (!n) return NULL;
+   BlockNode *cand = (BlockNode*)n->data;
+   return (addr <= cand->start + cand->size) ? cand : NULL;
 }
 
-// a O(log n) find on the sorted array
-static INLINE BlockNode* find_block(Addr addr)
-{
-    // 1) try exact
-    BlockNode* exact = (BlockNode*)VG_(HT_lookup)(blocks, addr);
-    if (exact) return exact;
-
-    // 2) binary search in blocks_sorted[]
-    if (blocks_sorted_cnt == 0) return NULL;
-    UWord lo = 0, hi = blocks_sorted_cnt;
-    // find first block with start > addr
-    while (lo < hi) {
-      UWord mid = lo + (hi - lo)/2;
-        if (blocks_sorted[mid]->start <= addr)
-            lo = mid + 1;
-        else
-            hi = mid;
-    }
-    if (lo == 0)
-        return NULL;               // all blocks start > addr
-    BlockNode* cand = blocks_sorted[lo-1];
-    if (addr <= cand->start + cand->size)
-        return cand;
-    return NULL;
-}
-
+// --------------------------------------------------
+// 5) Hook the tree‐insert into your log_store
+// --------------------------------------------------
 static INLINE void log_store(Addr addr, HWord value) {
-   BlockNode* b = find_block(addr);
+    BlockNode* b = find_block(addr);
+    if (!b) {
+        // … allocate & init new BlockNode exactly as before …
+        BlockNode* newb = VG_(malloc)("blocks.node", sizeof(*newb));
+        newb->next = NULL;
+        newb->key   = addr;
+        newb->start = addr;
+        newb->size  = 0;
+        newb->allocation_site = NULL;
 
-   if (!b) {
-      // allocate & init as before...
-      BlockNode* newb = VG_(malloc)("blocks.node", sizeof(*newb));
-      newb->next = NULL;
-      newb->key   = addr;
-      newb->start = addr;
-      newb->size  = 0;
-      newb->allocation_site = NULL;
+        AddrInfo ai = { .tag = Addr_Undescribed };
+        describe_addr(VG_(current_DiEpoch)(), addr, &ai);
+        if (ai.tag == Addr_Block) {
+            newb->key             = addr - ai.Addr.Block.rwoffset;
+            newb->start           = newb->key;
+            newb->size            = ai.Addr.Block.block_szB;
+            newb->allocation_site = ai.Addr.Block.allocated_at;
+        }
 
-      // fill in via describe_addr() as before...
-      AddrInfo ai = { .tag = Addr_Undescribed };
-      describe_addr(VG_(current_DiEpoch)(), addr, &ai);
-      if (ai.tag == Addr_Block) {
-         newb->key            = addr - ai.Addr.Block.rwoffset;
-         newb->start          = newb->key;
-         newb->size           = ai.Addr.Block.block_szB;
-         newb->allocation_site = ai.Addr.Block.allocated_at;
-      }
+        // 1) insert into your hash
+        VG_(HT_add_node)(blocks, newb);
+        // 2) *also* insert into the RB tree
+        insert_block_rb(newb);
 
-      // 1) add to hash
-      VG_(HT_add_node)(blocks, newb);
-      // 2) also splice into our sorted array
-      insert_sorted_block(newb);
+        b = newb;
+    }
 
-      b = newb;
-   }
-
-   if (b->size > MIN_BLOCK_SIZE) {
-      print(addr, value);
-   }
+    if (b->size > MIN_BLOCK_SIZE) {
+        print(addr, value);
+    }
 }
-
 
 static INLINE void memlog_fini(void) {
    flush_log_buffer();
@@ -432,6 +388,7 @@ static INLINE void memlog_fini(void) {
     }
 
     VG_(HT_destruct) (blocks, VG_(free));
+    // TODO: free the rb tree
 }
 
 static INLINE Bool is_app_code(VexGuestExtents* vge)
