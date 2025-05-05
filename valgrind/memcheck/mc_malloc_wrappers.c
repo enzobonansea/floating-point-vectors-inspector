@@ -46,6 +46,7 @@
 #include "pub_tool_xtmemory.h"
 
 #include "mc_include.h"
+#include "memlog.h"
 
 /*------------------------------------------------------------*/
 /*--- Defns                                                ---*/
@@ -398,6 +399,8 @@ void* MC_(new_block) ( ThreadId tid,
       MC_(make_mem_undefined_w_otag)( p, szB, ecu | MC_OKIND_HEAP );
    }
 
+   memlog_handle_new_block(mc);
+
    return (void*)p;
 }
 
@@ -526,6 +529,7 @@ void MC_(handle_free) ( ThreadId tid, Addr p, UInt rzB, MC_AllocKind kind )
    if (mc == NULL) {
       MC_(record_free_error) ( tid, p );
    } else {
+      memlog_handle_free_block(mc);
       /* check if it is a matching free() / delete / delete [] */
       if (kind != mc->allockind) {
          tl_assert(p == mc->data);

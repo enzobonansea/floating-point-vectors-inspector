@@ -13,60 +13,102 @@
 #include "rbtree.h"
 
 #define INLINE    inline __attribute__((always_inline))
-#define MAX_LOG_ENTRIES 30000000
+#define MAX_LOG_ENTRIES 3000000
 #define PAGE_SIZE 4096
 #define MIN_BLOCK_SIZE 1*PAGE_SIZE // TODO: this should be a tool's parameter
 
-typedef struct {
-   Addr        addr;
-   HWord       value;
-} LogEntry;
+typedef enum {
+   LOG_STORE,
+   LOG_ALLOC,
+   LOG_FREE
+} LogEventType;
 
-typedef struct BlockNode {
-   struct rb_node        rb;
-   UWord                  key;
-   Addr                  start;
-   SizeT                 size;
-   ExeContext*           allocation_site;
-   struct BlockNode    * next;
-} BlockNode;
+typedef struct {
+   LogEventType  type;
+   Addr          addr;
+   HWord         value;      // For LOG_STORE
+   SizeT         size;       // For LOG_ALLOC, LOG_FREE
+   ExeContext*   where;      // For LOG_ALLOC, LOG_FREE
+} LogEntry;
 
 static LogEntry log_buffer[MAX_LOG_ENTRIES];
 static Int log_count = 0;
-static VgHashTable *blocks = NULL; 
 static rb_root_t blocks_tree = RB_ROOT;
 
 INLINE void memlog_init(void) 
 {
-   blocks = VG_(HT_construct)("blocks");
 }
 
 static INLINE void flush_log_buffer(void)
 {
    for (Int i = 0; i < log_count; i++) {
-      VG_(printf)("0x%lx 0x%lx\n", log_buffer[i].addr, log_buffer[i].value);
+      LogEntry* entry = &log_buffer[i];
+      
+      switch (entry->type) {
+      case LOG_STORE:
+         VG_(printf)("0x%lx 0x%lx\n", entry->addr, entry->value);
+         break;
+      
+      case LOG_ALLOC:
+         VG_(printf)("===ALLOC START===\n");
+         VG_(printf)("Start 0x%lx, size %ld\n", entry->addr, entry->size);
+         
+         if (entry->where) {
+            VG_(pp_ExeContext)(entry->where);
+         } else {
+            VG_(printf)("(No allocation stack trace available)\n");
+         }
+         
+         VG_(printf)("===ALLOC END===\n");
+         break;
+      
+      case LOG_FREE:
+         VG_(printf)("===FREE START===\n");
+         VG_(printf)("Start 0x%lx, size %ld\n", entry->addr, entry->size);
+         
+         if (entry->where) {
+            VG_(pp_ExeContext)(entry->where);
+         } else {
+            VG_(printf)("(No free stack trace available)\n");
+         }
+         
+         VG_(printf)("===FREE END===\n");
+         break;
+      }
    }
    log_count = 0;
 }
 
-static INLINE void print(Addr addr, HWord value)
+static INLINE void add_to_buffer(LogEventType type, Addr addr, HWord value, SizeT size, ExeContext* where)
 {
-   log_buffer[log_count].addr       = addr;
-   log_buffer[log_count].value      = value;
+   log_buffer[log_count].type = type;
+   log_buffer[log_count].addr = addr;
+   if (type == LOG_STORE) {
+      log_buffer[log_count].value = value;
+   } else {
+      log_buffer[log_count].size = size;
+      log_buffer[log_count].where = where;
+   }
+   
    log_count++;
    if (log_count >= MAX_LOG_ENTRIES) {
       flush_log_buffer();
    }
 }
 
-static INLINE void insert_block_rb(BlockNode *b) {
+static INLINE void print(Addr addr, HWord value)
+{
+   add_to_buffer(LOG_STORE, addr, value, 0, NULL);
+}
+
+static INLINE void insert_block_rb(MC_Chunk* mc) {
    /* ---- step 0: create the rb_node that will carry the block ---- */
    rb_node_t *n = VG_(malloc)("blocks.rbnode", sizeof(*n));
    *n = (rb_node_t){
       .parent = NULL, .left = NULL, .right = NULL,
       .color  = RED,
-      .key    = b->start,   /* <‑‑ key used for ordering      */
-      .data   = b           /* <‑‑ payload: the BlockNode*    */
+      .key    = mc->data,
+      .data   = mc
    };
 
    /* ---- step 1: ordinary ordered‑binary‑tree insertion walk ---- */
@@ -81,7 +123,7 @@ static INLINE void insert_block_rb(BlockNode *b) {
          link = &parent->right;
       else {
          /* same start address already present – nothing to do   */
-         VG_(free)(n);
+         VG_(free)(n); // TODO: do not call malloc if we are not going to use it
          return;
       }
    }
@@ -91,48 +133,16 @@ static INLINE void insert_block_rb(BlockNode *b) {
    rb_insert_color(n, &blocks_tree);    /* applies RB‑tree fix‑ups          */
 }
 
-static INLINE BlockNode* find_block(Addr addr) {
-   BlockNode* exact = (BlockNode*)VG_(HT_lookup)(blocks, addr);
-   if (exact) return exact;
-
+static INLINE Bool is_tracked(Addr addr) {
    rb_node_t *n = rb_search_leq(&blocks_tree, (unsigned long)addr);
-   if (!n) return NULL;
-   BlockNode *cand = (BlockNode*)n->data;
-   return (addr <= cand->start + cand->size) ? cand : NULL;
-}
+   if (!n) return False;
 
-static INLINE BlockNode* find_or_create_block(Addr addr) {
-   BlockNode* b = find_block(addr);
-
-   if (!b) {
-      BlockNode* newb = VG_(malloc)("blocks.node", sizeof(*newb));
-      newb->next = NULL;
-      newb->key   = addr;
-      newb->start = addr;
-      newb->size  = 0;
-      newb->allocation_site = NULL;
-
-      AddrInfo ai = { .tag = Addr_Undescribed };
-      describe_addr(VG_(current_DiEpoch)(), addr, &ai);
-      if (ai.tag == Addr_Block) {
-         newb->key             = addr - ai.Addr.Block.rwoffset;
-         newb->start           = newb->key;
-         newb->size            = ai.Addr.Block.block_szB;
-         newb->allocation_site = ai.Addr.Block.allocated_at;
-         // TODO: if is new, print. Then remove prints of memlog_fini
-      }
-
-      VG_(HT_add_node)(blocks, newb);
-      insert_block_rb(newb);
-
-      b = newb;
-   }
-
-   return b;
+   MC_Chunk *cand = (MC_Chunk*)n->data;
+   return (addr <= cand->data + cand->szB) ? cand : False;
 }
 
 static INLINE void log_store(Addr addr, HWord value) {
-    if (find_or_create_block(addr)->size > MIN_BLOCK_SIZE) {
+    if (is_tracked(addr)) {
         print(addr, value);
     }
 }
@@ -154,24 +164,7 @@ static void free_rb_tree(rb_root_t *root) {
 
 INLINE void memlog_fini(void) {
    flush_log_buffer();
-   
-    VG_(printf)("\n=== Allocation sites ===\n");
-    
-    VgHashNode *node;
-    VG_(HT_ResetIter)(blocks);
-    while ((node = VG_(HT_Next)(blocks))) {
-      BlockNode* block_node = (BlockNode*)node;
-      // Avoid those nodes that aren't actually a Block but they are into the hash table for 
-      // reducing the quantity of calls to describe_addr in log_store an thus increase the tool's throughput
-      if (block_node->allocation_site && block_node->size > MIN_BLOCK_SIZE) {
-         VG_(printf)("Start 0x%lx, size %ld\n", block_node->start, block_node->size);
-         VG_(pp_ExeContext)(block_node->allocation_site);
-         VG_(printf)("\n");
-      }
-    }
-
-    VG_(HT_destruct) (blocks, VG_(free));
-    free_rb_tree(&blocks_tree);
+   free_rb_tree(&blocks_tree);
 }
 
 static INLINE Bool is_app_code(const VexGuestExtents* vge)
@@ -297,4 +290,22 @@ INLINE IRSB* memlog_instrument(VgCallbackClosure* closure,
     IRType gWordTy,
     IRType hWordTy) {
     return is_app_code(vge) ? wire_memlog(bb_in) : bb_in;
+}
+
+INLINE void memlog_handle_new_block(MC_Chunk* mc) {
+   if (mc->szB < MIN_BLOCK_SIZE) return;
+
+   ExeContext* where = MC_(allocated_at)(mc);
+   add_to_buffer(LOG_ALLOC, mc->data, 0, mc->szB, where);
+
+   insert_block_rb(mc);
+}
+
+INLINE void memlog_handle_free_block(MC_Chunk* mc) {
+   if (mc->szB < MIN_BLOCK_SIZE) return;
+
+   ExeContext* where = MC_(freed_at)(mc);
+   add_to_buffer(LOG_FREE, mc->data, 0, mc->szB, where);
+   
+   rb_delete(&blocks_tree, mc->data);
 }

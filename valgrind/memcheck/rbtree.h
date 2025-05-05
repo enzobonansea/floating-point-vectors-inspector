@@ -27,5 +27,6 @@ static inline void rb_link_node(rb_node_t *node, rb_node_t *parent, rb_node_t **
 
 void rb_insert_color(rb_node_t *node, rb_root_t *root);
 rb_node_t *rb_search_leq(rb_root_t *root, unsigned long key);
+rb_node_t *rb_delete(rb_root_t *root, unsigned long key);
 
 #endif

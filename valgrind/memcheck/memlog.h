@@ -17,5 +17,7 @@ IRSB* memlog_instrument(
     const VexArchInfo* archinfo_host,
     IRType gWordTy,
     IRType hWordTy);
+void memlog_handle_new_block(MC_Chunk* mc);
+void memlog_handle_free_block(MC_Chunk* mc);
 
 #endif
