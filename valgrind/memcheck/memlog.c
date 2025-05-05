@@ -7,6 +7,7 @@
 #include "pub_tool_mallocfree.h"
 #include "pub_tool_tooliface.h"
 #include "pub_tool_threadstate.h"
+#include "pub_tool_machine.h"  // For VG_(fnptr_to_fnentry)
 #include "mc_include.h"
 #include "memcheck.h"
 #include "memlog.h"
@@ -51,7 +52,7 @@ static INLINE void flush_log_buffer(void)
       
       case LOG_ALLOC:
          VG_(printf)("===ALLOC START===\n");
-         VG_(printf)("Start 0x%lx, size %ld\n", entry->addr, entry->size);
+         VG_(printf)("Start 0x%lx, size %lu\n", entry->addr, entry->size);
          
          if (entry->where) {
             VG_(pp_ExeContext)(entry->where);
@@ -64,7 +65,7 @@ static INLINE void flush_log_buffer(void)
       
       case LOG_FREE:
          VG_(printf)("===FREE START===\n");
-         VG_(printf)("Start 0x%lx, size %ld\n", entry->addr, entry->size);
+         VG_(printf)("Start 0x%lx, size %lu\n", entry->addr, entry->size);
          
          if (entry->where) {
             VG_(pp_ExeContext)(entry->where);
@@ -137,7 +138,7 @@ static INLINE Bool is_tracked(Addr addr) {
    if (!n) return False;
 
    MC_Chunk *cand = (MC_Chunk*)n->data;
-   return (addr <= cand->data + cand->szB) ? cand : False;
+   return addr <= (cand->data + cand->szB);
 }
 
 static INLINE void log_store(Addr addr, HWord value) {
