@@ -102,7 +102,23 @@ static INLINE void print(Addr addr, HWord value)
 }
 
 static INLINE void insert_block_rb(MC_Chunk* mc) {
-   /* ---- step 0: create the rb_node that will carry the block ---- */
+   /* ---- step 1: ordinary ordered‑binary‑tree search walk ---- */
+   rb_node_t **link  = &blocks_tree.root;   /* pointer to current link */
+   rb_node_t  *parent = NULL;               /* parent node we land under */
+
+   while (*link) {
+      parent = *link;
+      if (mc->data < parent->key)
+         link = &parent->left;
+      else if (mc->data > parent->key)
+         link = &parent->right;
+      else {
+         /* same start address already present – nothing to do   */
+         return;
+      }
+   }
+
+   /* ---- step 2: create the rb_node that will carry the block ---- */
    rb_node_t *n = VG_(malloc)("blocks.rbnode", sizeof(*n));
    *n = (rb_node_t){
       .parent = NULL, .left = NULL, .right = NULL,
@@ -111,24 +127,7 @@ static INLINE void insert_block_rb(MC_Chunk* mc) {
       .data   = mc
    };
 
-   /* ---- step 1: ordinary ordered‑binary‑tree insertion walk ---- */
-   rb_node_t **link  = &blocks_tree.root;   /* pointer to current link */
-   rb_node_t  *parent = NULL;               /* parent node we land under */
-
-   while (*link) {
-      parent = *link;
-      if (n->key < parent->key)
-         link = &parent->left;
-      else if (n->key > parent->key)
-         link = &parent->right;
-      else {
-         /* same start address already present – nothing to do   */
-         VG_(free)(n); // TODO: do not call malloc if we are not going to use it
-         return;
-      }
-   }
-
-   /* ---- step 2: hook it in and rebalance ---- */
+   /* ---- step 3: hook it in and rebalance ---- */
    rb_link_node(n, parent, link);       /* fixes child pointer and n->parent */
    rb_insert_color(n, &blocks_tree);    /* applies RB‑tree fix‑ups          */
 }
