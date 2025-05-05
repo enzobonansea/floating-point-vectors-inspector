@@ -101,8 +101,9 @@ static INLINE BlockNode* find_block(Addr addr) {
    return (addr <= cand->start + cand->size) ? cand : NULL;
 }
 
-static INLINE void log_store(Addr addr, HWord value) {
+static INLINE BlockNode* find_or_create_block(Addr addr) {
     BlockNode* b = find_block(addr);
+
     if (!b) {
         BlockNode* newb = VG_(malloc)("blocks.node", sizeof(*newb));
         newb->next = NULL;
@@ -120,15 +121,17 @@ static INLINE void log_store(Addr addr, HWord value) {
             newb->allocation_site = ai.Addr.Block.allocated_at;
         }
 
-        // 1) insert into your hash
         VG_(HT_add_node)(blocks, newb);
-        // 2) *also* insert into the RB tree
         insert_block_rb(newb);
 
         b = newb;
     }
 
-    if (b->size > MIN_BLOCK_SIZE) {
+   return b;
+}
+
+static INLINE void log_store(Addr addr, HWord value) {
+    if (find_or_create_block(addr)->size > MIN_BLOCK_SIZE) {
         print(addr, value);
     }
 }
