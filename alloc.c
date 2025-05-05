@@ -52,14 +52,48 @@ __m128i* test_128bit_stores()
     return ptr_128;
 }
 
+__m256i* test_256bit_stores()
+{
+    int qty = 1000000;
+
+    // Allocate memory aligned to 32 bytes for proper AVX operation
+    __m256i *ptr_256 = (__m256i *)malloc(qty * sizeof(__m256i));
+    printf("ptr_256bit_stores=%p\n", ptr_256);
+
+    // Create a 256-bit value
+    __m256i value = _mm256_set_epi64x(0xDEADBEEFDEADBEEF, 0x0123456789ABCDEF, 
+                                      0xFEDCBA9876543210, 0xAABBCCDDEEFF0011);
+
+    // Store the 256-bit values to memory
+    for (int i = 0; i < qty; i++)
+    {
+        _mm256_store_si256(ptr_256 + i, value);
+    }
+
+    // Test different store operations that should trigger 256-bit operations
+    __m256i val1 = _mm256_set_epi32(1, 2, 3, 4, 5, 6, 7, 8);          // Eight 32-bit integers
+    __m256i val2 = _mm256_set_epi16(1, 2, 3, 4, 5, 6, 7, 8, 
+                                     9, 10, 11, 12, 13, 14, 15, 16);   // Sixteen 16-bit integers
+    _mm256_store_si256(ptr_256, val1);
+    _mm256_store_si256(ptr_256 + 1, val2);
+
+    // Test some arithmetic operations with 256-bit values
+    __m256i result = _mm256_add_epi32(val1, val2); // Add packed 32-bit integers
+    _mm256_store_si256(ptr_256 + 2, result);
+
+    return ptr_256;
+}
+
 int main() {
     float*      ptr1    = test_32bit_stores();
     double*     ptr2    = test_64bit_stores();
     __m128i*    ptr3    = test_128bit_stores();
+    __m256i*    ptr4    = test_256bit_stores();
 
     free(ptr1);
     free(ptr2);
     free(ptr3);
+    free(ptr4);
 
     return 0;
 }

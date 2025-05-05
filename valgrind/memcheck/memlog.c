@@ -207,7 +207,7 @@ static INLINE void wire_log_store(IRSB* bb_out,
 static INLINE IRSB* wire_memlog(IRSB* bb_in)
 {
    IRSB* bb_out = deepCopyIRSBExceptStmts(bb_in);
-   IRTemp addr_tmp, data_tmp, addr_tmp1, data_tmp1;
+   IRTemp addr_tmp, data_tmp, addr_tmp1, data_tmp1, addr_tmp2, data_tmp2, addr_tmp3, data_tmp3;
 
    for (Int i = 0; i < bb_in->stmts_used; i++) {
       IRStmt* stmt = bb_in->stmts[i];
@@ -221,6 +221,10 @@ static INLINE IRSB* wire_memlog(IRSB* bb_in)
          data_tmp           = newIRTemp(bb_out->tyenv, Ity_I64);
          addr_tmp1          = newIRTemp(bb_out->tyenv, Ity_I64);
          data_tmp1          = newIRTemp(bb_out->tyenv, Ity_I64);
+         addr_tmp2          = newIRTemp(bb_out->tyenv, Ity_I64);
+         data_tmp2          = newIRTemp(bb_out->tyenv, Ity_I64);
+         addr_tmp3          = newIRTemp(bb_out->tyenv, Ity_I64);
+         data_tmp3          = newIRTemp(bb_out->tyenv, Ity_I64);
          IRType  ty         = typeOfIRExpr(bb_in->tyenv, data);
          switch (ty) {
          case Ity_I1:
@@ -263,9 +267,14 @@ static INLINE IRSB* wire_memlog(IRSB* bb_in)
          case Ity_F16:
             wire_log_store(bb_out, addr_tmp, addr, data_tmp, IRExpr_Unop(Iop_F16toF64, data));
             break;
+         case Ity_V256:
+            wire_log_store(bb_out, addr_tmp, addr, data_tmp, IRExpr_Unop(Iop_V256to64_3, data));
+            wire_log_store(bb_out, addr_tmp1, IRExpr_Binop(Iop_Add64, addr, IRExpr_Const(IRConst_U64(8))), data_tmp1, IRExpr_Unop(Iop_V256to64_2, data));
+            wire_log_store(bb_out, addr_tmp2, IRExpr_Binop(Iop_Add64, addr, IRExpr_Const(IRConst_U64(16))), data_tmp2, IRExpr_Unop(Iop_V256to64_1, data));
+            wire_log_store(bb_out, addr_tmp3, IRExpr_Binop(Iop_Add64, addr, IRExpr_Const(IRConst_U64(24))), data_tmp3, IRExpr_Unop(Iop_V256to64_0, data));
+            break;
          case Ity_D32:
          case Ity_D64:
-         case Ity_V256:
             // TODO
             break;
          case Ity_INVALID:

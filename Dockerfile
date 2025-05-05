@@ -12,7 +12,7 @@ RUN mkdir -p /usr/cpu2017 \
 
 # Add test programs
 COPY alloc.c /usr/alloc.c
-RUN gcc -O0 -g -o /usr/alloc /usr/alloc.c
+RUN gcc -mavx -mavx2 -O0 -g -o /usr/alloc /usr/alloc.c
 
 # Install custom valgrind
 ADD valgrind /opt/valgrind
