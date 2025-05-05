@@ -119,6 +119,7 @@ static INLINE BlockNode* find_or_create_block(Addr addr) {
          newb->start           = newb->key;
          newb->size            = ai.Addr.Block.block_szB;
          newb->allocation_site = ai.Addr.Block.allocated_at;
+         // TODO: if is new, print. Then remove prints of memlog_fini
       }
 
       VG_(HT_add_node)(blocks, newb);
@@ -275,7 +276,7 @@ static INLINE IRSB* wire_memlog(IRSB* bb_in)
             break;
          case Ity_D32:
          case Ity_D64:
-            // TODO
+            // TODO: add support for D32 and D64
             break;
          case Ity_INVALID:
             break;
