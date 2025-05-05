@@ -33,7 +33,7 @@ typedef struct {
 
 static LogEntry log_buffer[MAX_LOG_ENTRIES];
 static Int log_count = 0;
-static rb_root_t blocks_tree = RB_ROOT;
+static rb_root_t tracked_blocks = RB_ROOT;
 
 INLINE void memlog_init(void) 
 {
@@ -103,7 +103,7 @@ static INLINE void print(Addr addr, HWord value)
 
 static INLINE void insert_block_rb(MC_Chunk* mc) {
    /* ---- step 1: ordinary ordered‑binary‑tree search walk ---- */
-   rb_node_t **link  = &blocks_tree.root;   /* pointer to current link */
+   rb_node_t **link  = &tracked_blocks.root;   /* pointer to current link */
    rb_node_t  *parent = NULL;               /* parent node we land under */
 
    while (*link) {
@@ -129,11 +129,11 @@ static INLINE void insert_block_rb(MC_Chunk* mc) {
 
    /* ---- step 3: hook it in and rebalance ---- */
    rb_link_node(n, parent, link);       /* fixes child pointer and n->parent */
-   rb_insert_color(n, &blocks_tree);    /* applies RB‑tree fix‑ups          */
+   rb_insert_color(n, &tracked_blocks);    /* applies RB‑tree fix‑ups          */
 }
 
 static INLINE Bool is_tracked(Addr addr) {
-   rb_node_t *n = rb_search_leq(&blocks_tree, (unsigned long)addr);
+   rb_node_t *n = rb_search_leq(&tracked_blocks, (unsigned long)addr);
    if (!n) return False;
 
    MC_Chunk *cand = (MC_Chunk*)n->data;
@@ -163,7 +163,7 @@ static void free_rb_tree(rb_root_t *root) {
 
 INLINE void memlog_fini(void) {
    flush_log_buffer();
-   free_rb_tree(&blocks_tree);
+   free_rb_tree(&tracked_blocks);
 }
 
 static INLINE Bool is_app_code(const VexGuestExtents* vge)
@@ -306,5 +306,5 @@ INLINE void memlog_handle_free_block(MC_Chunk* mc) {
    ExeContext* where = MC_(freed_at)(mc);
    add_to_buffer(LOG_FREE, mc->data, 0, mc->szB, where);
    
-   rb_delete(&blocks_tree, mc->data);
+   rb_delete(&tracked_blocks, mc->data);
 }
