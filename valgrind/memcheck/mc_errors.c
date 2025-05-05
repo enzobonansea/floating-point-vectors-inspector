@@ -44,7 +44,6 @@
 #include "pub_tool_xarray.h"
 #include "pub_tool_aspacemgr.h"
 #include "pub_tool_addrinfo.h"
-#include "pub_tool_addrinfo.h" // For Memlog
 
 #include "mc_include.h"
 
