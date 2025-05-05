@@ -102,30 +102,30 @@ static INLINE BlockNode* find_block(Addr addr) {
 }
 
 static INLINE BlockNode* find_or_create_block(Addr addr) {
-    BlockNode* b = find_block(addr);
+   BlockNode* b = find_block(addr);
 
-    if (!b) {
-        BlockNode* newb = VG_(malloc)("blocks.node", sizeof(*newb));
-        newb->next = NULL;
-        newb->key   = addr;
-        newb->start = addr;
-        newb->size  = 0;
-        newb->allocation_site = NULL;
+   if (!b) {
+      BlockNode* newb = VG_(malloc)("blocks.node", sizeof(*newb));
+      newb->next = NULL;
+      newb->key   = addr;
+      newb->start = addr;
+      newb->size  = 0;
+      newb->allocation_site = NULL;
 
-        AddrInfo ai = { .tag = Addr_Undescribed };
-        describe_addr(VG_(current_DiEpoch)(), addr, &ai);
-        if (ai.tag == Addr_Block) {
-            newb->key             = addr - ai.Addr.Block.rwoffset;
-            newb->start           = newb->key;
-            newb->size            = ai.Addr.Block.block_szB;
-            newb->allocation_site = ai.Addr.Block.allocated_at;
-        }
+      AddrInfo ai = { .tag = Addr_Undescribed };
+      describe_addr(VG_(current_DiEpoch)(), addr, &ai);
+      if (ai.tag == Addr_Block) {
+         newb->key             = addr - ai.Addr.Block.rwoffset;
+         newb->start           = newb->key;
+         newb->size            = ai.Addr.Block.block_szB;
+         newb->allocation_site = ai.Addr.Block.allocated_at;
+      }
 
-        VG_(HT_add_node)(blocks, newb);
-        insert_block_rb(newb);
+      VG_(HT_add_node)(blocks, newb);
+      insert_block_rb(newb);
 
-        b = newb;
-    }
+      b = newb;
+   }
 
    return b;
 }
@@ -188,6 +188,22 @@ static INLINE Bool is_app_code(const VexGuestExtents* vge)
    return vge_has_app_code;
 }
 
+static INLINE void wire_log_store(IRSB* bb_out,
+   IRTemp  addr_tmp,
+   IRExpr* addr,
+   IRTemp  data_tmp,
+   IRExpr* data_widen)
+{
+   addStmtToIRSB(bb_out, IRStmt_WrTmp(addr_tmp, addr));
+   addStmtToIRSB(bb_out, IRStmt_WrTmp(data_tmp, data_widen));
+   IRDirty* dirty = unsafeIRDirty_0_N(
+      0, 
+      "log_store", 
+      (void*)VG_(fnptr_to_fnentry)(log_store),
+      mkIRExprVec_2(IRExpr_RdTmp(addr_tmp), IRExpr_RdTmp(data_tmp)));
+   addStmtToIRSB(bb_out, IRStmt_Dirty(dirty));
+}
+
 static INLINE IRSB* wire_memlog(IRSB* bb_in)
 {
    IRSB* bb_out = deepCopyIRSBExceptStmts(bb_in);
@@ -203,31 +219,33 @@ static INLINE IRSB* wire_memlog(IRSB* bb_in)
          IRExpr* addr       = stmt->Ist.Store.addr;
          addr_tmp           = newIRTemp(bb_out->tyenv, Ity_I64);
          data_tmp           = newIRTemp(bb_out->tyenv, Ity_I64);
-         IRExpr* data_widen = NULL;
          IRType  ty         = typeOfIRExpr(bb_in->tyenv, data);
          switch (ty) {
          case Ity_I1:
-            data_widen = IRExpr_Unop(Iop_1Uto64, data);
+            wire_log_store(bb_out, addr_tmp, addr, data_tmp, IRExpr_Unop(Iop_1Uto64, data));
             break;
          case Ity_I8:
-            data_widen = IRExpr_Unop(Iop_8Uto64, data);
+            wire_log_store(bb_out, addr_tmp, addr, data_tmp, IRExpr_Unop(Iop_8Uto64, data));
             break;
          case Ity_I16:
-            data_widen = IRExpr_Unop(Iop_16Uto64, data);
+            wire_log_store(bb_out, addr_tmp, addr, data_tmp, IRExpr_Unop(Iop_16Uto64, data));
             break;
          case Ity_I32:
-            data_widen = IRExpr_Unop(Iop_32Uto64, data);
+            wire_log_store(bb_out, addr_tmp, addr, data_tmp, IRExpr_Unop(Iop_32Uto64, data));
             break;
          case Ity_I64:
-            data_widen = data;
+            wire_log_store(bb_out, addr_tmp, addr, data_tmp, data);
             break;
          case Ity_F32:
-            data_widen = IRExpr_Unop(Iop_F32toI64U, data);
+            wire_log_store(bb_out, addr_tmp, addr, data_tmp, IRExpr_Unop(Iop_F32toI64U, data));
             break;
          case Ity_F64:
-            data_widen = data;
+            wire_log_store(bb_out, addr_tmp, addr, data_tmp, data);
             break;
          case Ity_I128:
+            wire_log_store(bb_out, addr_tmp, addr, data_tmp, IRExpr_Unop(Iop_F128HItoF64, data));
+            wire_log_store(bb_out, addr_tmp, IRExpr_Binop(Iop_Add64, addr, IRExpr_Const(8)), data_tmp, IRExpr_Unop(Iop_F128LOtoF64, data));
+            break;
          case Ity_F16:
          case Ity_D32:
          case Ity_D64:
@@ -236,16 +254,7 @@ static INLINE IRSB* wire_memlog(IRSB* bb_in)
          case Ity_V128:
          case Ity_V256:
          case Ity_INVALID:
-            // TODO
             break;
-         }
-         if (data_widen) {
-            addStmtToIRSB(bb_out, IRStmt_WrTmp(addr_tmp, addr));
-            addStmtToIRSB(bb_out, IRStmt_WrTmp(data_tmp, data_widen));
-            IRDirty* dirty = unsafeIRDirty_0_N(
-               0, "log_store", (void*)VG_(fnptr_to_fnentry)(log_store),
-               mkIRExprVec_2(IRExpr_RdTmp(addr_tmp), IRExpr_RdTmp(data_tmp)));
-            addStmtToIRSB(bb_out, IRStmt_Dirty(dirty));
          }
       }
 
