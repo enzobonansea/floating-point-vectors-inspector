@@ -261,6 +261,8 @@ static INLINE IRSB* wire_memlog(IRSB* bb_in)
             wire_log_store(bb_out, addr_tmp1, IRExpr_Binop(Iop_Add64, addr, IRExpr_Const(IRConst_U64(8))), data_tmp1, IRExpr_Unop(Iop_D128LOtoD64, data));
             break;
          case Ity_F16:
+            wire_log_store(bb_out, addr_tmp, addr, data_tmp, IRExpr_Unop(Iop_F16toF64, data));
+            break;
          case Ity_D32:
          case Ity_D64:
          case Ity_V256:
