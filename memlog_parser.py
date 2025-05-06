@@ -131,9 +131,9 @@ def _write_stores(
                     _fh_for(base_name).write(line)
                     # actualizamos flags de alineamiento
                     offset = addr - start
-                    if aligned32[idx] and offset % 32 != 0:
+                    if aligned32[idx] and offset % 4 != 0:
                         aligned32[idx] = False
-                    if aligned64[idx] and offset % 64 != 0:
+                    if aligned64[idx] and offset % 8 != 0:
                         aligned64[idx] = False
 
     for fh in open_files.values():
