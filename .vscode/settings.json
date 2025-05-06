@@ -1,0 +1,10 @@
+{
+    "C_Cpp.default.compilerPath": "C:/msys64/ucrt64/bin/gcc.exe",
+    "files.associations": {
+        "memcheck.h": "c",
+        "pub_tool_hashtable.h": "c",
+        "pub_tool_basics.h": "c",
+        "pub_tool_options.h": "c",
+        "pub_tool_threadstate.h": "c"
+    }
+}
