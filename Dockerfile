@@ -47,8 +47,8 @@ COPY spec/fotonik.sh /usr/local/bin/spec/fotonik.sh
 RUN sed -i 's/\r$//' /usr/local/bin/spec/fotonik.sh
 RUN chmod +x /usr/local/bin/spec/fotonik.sh
 
-COPY spec/enzo.cfg /usr/cpu2017/config/enzo.cfg
-RUN sed -i 's/\r$//' /usr/cpu2017/config/enzo.cfg
+COPY spec/memlog-monitor.cfg /usr/cpu2017/config/memlog-monitor.cfg
+RUN sed -i 's/\r$//' /usr/cpu2017/config/memlog-monitor.cfg
 
 # Copy meny
 COPY menu.sh /usr/local/bin/menu.sh
