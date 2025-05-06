@@ -307,5 +307,9 @@ INLINE void memlog_handle_free_block(MC_Chunk* mc) {
    ExeContext* where = MC_(freed_at)(mc);
    add_to_buffer(LOG_FREE, mc->data, 0, mc->szB, where);
    
-   rb_delete(&tracked_blocks, mc->data);
+   rb_node_t * deleted = rb_delete(&tracked_blocks, mc->data);
+
+   if (deleted) {
+      VG_(free)(deleted);
+   }
 }
