@@ -4,4 +4,6 @@
 3. Run container `docker run -it valgrind-memlog`
    
 # About memcheck's customizations
-Searching for the keyword "memlog" into the "valgrind" folder, you will find every line of code added or modified by me in order to customize memcheck to print every store inside big enough buffers.
+- I added the files `rbtree.h`, `rbtree.c`, `memlog.h`, and `memlog.c`.
+- These files implement the custom functionality for logging memory operations.
+- I connected the original memcheck code with `memlog.h` to enable this functionality.
