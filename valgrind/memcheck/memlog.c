@@ -103,9 +103,8 @@ static INLINE void print(Addr addr, HWord value)
 }
 
 static INLINE void insert_block_rb(MC_Chunk* mc) {
-   /* ---- step 1: ordinary ordered‑binary‑tree search walk ---- */
-   rb_node_t **link  = &tracked_blocks.root;   /* pointer to current link */
-   rb_node_t  *parent = NULL;               /* parent node we land under */
+   rb_node_t **link  = &tracked_blocks.root;
+   rb_node_t  *parent = NULL;
 
    while (*link) {
       parent = *link;
@@ -119,7 +118,6 @@ static INLINE void insert_block_rb(MC_Chunk* mc) {
       }
    }
 
-   /* ---- step 2: create the rb_node that will carry the block ---- */
    rb_node_t *n = VG_(malloc)("blocks.rbnode", sizeof(*n));
    *n = (rb_node_t){
       .parent = NULL, .left = NULL, .right = NULL,
@@ -128,9 +126,8 @@ static INLINE void insert_block_rb(MC_Chunk* mc) {
       .data   = mc
    };
 
-   /* ---- step 3: hook it in and rebalance ---- */
-   rb_link_node(n, parent, link);       /* fixes child pointer and n->parent */
-   rb_insert_color(n, &tracked_blocks);    /* applies RB‑tree fix‑ups          */
+   rb_link_node(n, parent, link);
+   rb_insert_color(n, &tracked_blocks);
 }
 
 static INLINE Bool is_tracked(Addr addr) {
