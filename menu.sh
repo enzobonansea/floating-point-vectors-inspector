@@ -10,7 +10,7 @@ while true; do
     echo "6. Test bwaves avoiding runspec"
     echo "7. Test nab avoiding runspec"
     echo "8. Test wrf avoiding runspec"
-    echo "9. Test fotonik avoiding runspec"
+    echo "9. Test fotonik with runspec monitor"
     echo "10. Test fprate with runspec monitor"
 
     read -p "Enter your choice: " choice
