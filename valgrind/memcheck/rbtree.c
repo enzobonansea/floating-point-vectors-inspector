@@ -45,6 +45,13 @@ static INLINE void rb_rotate_right(rb_node_t *n, rb_root_t *root) {
     else                     p->right = l;
 }
 
+// Public: link a new node into the tree
+INLINE void rb_link_node(rb_node_t *node, rb_node_t *parent, rb_node_t **linkp) {
+    node->parent = parent;
+    node->left   = node->right = NULL;
+    *linkp = node;
+}
+
 // Public: insert‐fixup
 INLINE void rb_insert_color(rb_node_t *n, rb_root_t *root) {
     // standard RB-insert fixup from CLRS
