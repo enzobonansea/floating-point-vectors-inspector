@@ -11,6 +11,7 @@ while true; do
     echo "7. Test nab avoiding runspec"
     echo "8. Test wrf avoiding runspec"
     echo "9. Test fotonik avoiding runspec"
+    echo "10. Test fprate with runspec monitor"
 
     read -p "Enter your choice: " choice
 
@@ -51,6 +52,10 @@ while true; do
             ;;
         9)
             /usr/local/bin/spec/fotonik.sh
+            /bin/bash
+            ;;
+        10)
+            /usr/local/bin/spec/fprate.sh
             /bin/bash
             ;;
         *)
