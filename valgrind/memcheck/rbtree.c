@@ -1,4 +1,3 @@
-// rbtree.c
 #include "rbtree.h"
 #include <stddef.h>
 
@@ -7,13 +6,13 @@
 static INLINE rb_node_t *rb_grandparent(rb_node_t *n) {
     return n->parent ? n->parent->parent : NULL;
 }
+
 static INLINE rb_node_t *rb_uncle(rb_node_t *n) {
     rb_node_t *g = rb_grandparent(n);
     if (!g) return NULL;
     return (n->parent == g->left) ? g->right : g->left;
 }
 
-// Left‐rotate at node n
 static INLINE void rb_rotate_left(rb_node_t *n, rb_root_t *root) {
     rb_node_t *r = n->right;
     rb_node_t *p = n->parent;
@@ -30,7 +29,6 @@ static INLINE void rb_rotate_left(rb_node_t *n, rb_root_t *root) {
     else                     p->right = r;
 }
 
-// Right‐rotate at node n
 static INLINE void rb_rotate_right(rb_node_t *n, rb_root_t *root) {
     rb_node_t *l = n->left;
     rb_node_t *p = n->parent;
