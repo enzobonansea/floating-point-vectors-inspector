@@ -20,12 +20,7 @@ import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, TextIO
-
-try:
-    from tqdm import tqdm  # type: ignore
-except ImportError:  # fallback silencioso
-    def tqdm(iterable=None, *args, **kwargs):  # type: ignore
-        return iterable if iterable is not None else (lambda x: x)
+from tqdm import tqdm
 
 # ---------------- Expresiones regulares ----------------
 ALLOC_HEADER_RE = re.compile(r"^Start\s+0x([0-9a-fA-F]+),\s+size\s+(\d+)")
