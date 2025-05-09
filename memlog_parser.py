@@ -57,9 +57,9 @@ class LiveAlloc:
         addr = int(addr_hex, 16)
         offset = addr - self.start
         self.fh.write(f"0x{addr_hex.lower()} 0x{value_hex.lower()} {offset}\n")
-        if self.aligned32 and offset % 32 != 0:
+        if self.aligned32 and offset % 4 != 0:
             self.aligned32 = False
-        if self.aligned64 and offset % 64 != 0:
+        if self.aligned64 and offset % 8 != 0:
             self.aligned64 = False
 
     # ------------------------------------------------------------------
@@ -109,8 +109,7 @@ def parse_log(log_path: str | os.PathLike) -> Path:
         live_allocs[alloc.start].pop()
 
     file_size = log_path.stat().st_size
-    with tqdm(total=file_size, desc="Parsing log", unit="B", unit_scale=True) as pbar,
-        log_path.open("r", encoding="utf-8", errors="ignore") as fh:
+    with tqdm(total=file_size, desc="Parsing log", unit="B", unit_scale=True) as pbar, log_path.open("r", encoding="utf-8", errors="ignore") as fh:
 
         inside_alloc = inside_free = False
         seq = 0
