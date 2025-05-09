@@ -86,13 +86,15 @@ __m256i* test_256bit_stores()
 
 int main() {
     float*      ptr1    = test_32bit_stores();
-    double*     ptr2    = test_64bit_stores();
-    __m128i*    ptr3    = test_128bit_stores();
-    __m256i*    ptr4    = test_256bit_stores();
-
     free(ptr1);
+
+    double*     ptr2    = test_64bit_stores();
     free(ptr2);
+    
+    __m128i*    ptr3    = test_128bit_stores();
     free(ptr3);
+
+    __m256i*    ptr4    = test_256bit_stores();
     free(ptr4);
 
     return 0;
