@@ -19,7 +19,7 @@ import os
 import re
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, TextIO
+from typing import Dict, List
 from tqdm import tqdm
 
 # ---------------- Expresiones regulares ----------------
@@ -34,29 +34,26 @@ class LiveAlloc:
         "start",
         "size",
         "end",
-        "fh",
+        "stores",
         "aligned32",
         "aligned64",
         "base_core",
-        "has_store",
     )
 
-    def __init__(self, start: int, size: int, fh: TextIO, base_core: str):
+    def __init__(self, start: int, size: int, base_core: str):
         self.start = start
         self.size = size
         self.end = start + size
-        self.fh = fh
+        self.stores = []  # List of (addr_hex, value_hex, offset) tuples
         self.aligned32 = True
         self.aligned64 = True
         self.base_core = base_core
-        self.has_store = False
 
     # ------------------------------------------------------------------
     def write_store(self, addr_hex: str, value_hex: str) -> None:
-        self.has_store = True
         addr = int(addr_hex, 16)
         offset = addr - self.start
-        self.fh.write(f"0x{addr_hex.lower()} 0x{value_hex.lower()} {offset}\n")
+        self.stores.append((addr_hex.lower(), value_hex.lower(), offset))
         if self.aligned32 and offset % 4 != 0:
             self.aligned32 = False
         if self.aligned64 and offset % 8 != 0:
@@ -64,11 +61,10 @@ class LiveAlloc:
 
     # ------------------------------------------------------------------
     def close_and_finalize(self, out_dir: Path) -> None:
-        self.fh.close()
-        if not self.has_store:
-            # Ninguna STORE ⇒ borrar el archivo temporal
-            Path(self.fh.name).unlink(missing_ok=True)
+        if not self.stores:
+            # Ninguna STORE ⇒ no crear archivo
             return
+        
         suffix = "_distVar"
         if self.aligned32:
             suffix = "_dist64" if self.aligned64 else "_dist32"
@@ -79,7 +75,11 @@ class LiveAlloc:
             while (out_dir / f"{new_name}.{i}").exists():
                 i += 1
             target = out_dir / f"{new_name}.{i}"
-        Path(self.fh.name).rename(target)
+        
+        # Write all stores to the final file
+        with target.open("w", encoding="utf-8") as fh:
+            for addr_hex, value_hex, offset in self.stores:
+                fh.write(f"0x{addr_hex} 0x{value_hex} {offset}\n")
 
 # -------------------------------------------------------
 
@@ -112,7 +112,6 @@ def parse_log(log_path: str | os.PathLike) -> Path:
     with tqdm(total=file_size, desc="Parsing log", unit="B", unit_scale=True) as pbar, log_path.open("r", encoding="utf-8", errors="ignore") as fh:
 
         inside_alloc = inside_free = False
-        seq = 0
 
         for line in fh:
             pbar.update(len(line))
@@ -137,9 +136,7 @@ def parse_log(log_path: str | os.PathLike) -> Path:
             if line.startswith("===FREE START==="):
                 inside_free = True; continue
             if line.startswith("===FREE END==="):
-                inside_free = False; continue
-
-            # ALLOC header ----------------------------------------------
+                inside_free = False; continue            # ALLOC header ----------------------------------------------
             if inside_alloc:
                 m_alloc = ALLOC_HEADER_RE.match(line)
                 if m_alloc:
@@ -147,10 +144,7 @@ def parse_log(log_path: str | os.PathLike) -> Path:
                     start_int = int(start_hex, 16)
                     size_int = int(size_str)
                     base_core = f"0x{start_hex.lower()}_{size_int}"
-                    seq += 1
-                    tmp_name = f"{base_core}__tmp{seq}"
-                    fh_out = (out_dir / tmp_name).open("w", encoding="utf-8", buffering=1)
-                    _add(LiveAlloc(start_int, size_int, fh_out, base_core))
+                    _add(LiveAlloc(start_int, size_int, base_core))
                 continue
 
             # FREE header -----------------------------------------------
