@@ -170,10 +170,16 @@ def parse_log(log_path: str | os.PathLike) -> Path:
 
 # -------------------------------------------------------
 if __name__ == "__main__":
-    import argparse
+    import argparse, subprocess, sys
 
     parser = argparse.ArgumentParser(description="Parse Valgrind logs; ignore ALLOCs without STOREs.")
     parser.add_argument("logfile", help="Ruta al fichero .log a procesar")
     args = parser.parse_args()
 
-    parse_log(args.logfile)
+    out_dir = parse_log(args.logfile)
+    # Compress each parsed file
+    for file in out_dir.iterdir():
+        if file.is_file():
+            with open(f"{file}.compression", "w", encoding="utf-8") as fh:
+                subprocess.run(["/usr/mmu_compressor", str(file)], stdout=fh, stderr=subprocess.DEVNULL)
+    sys.exit(0)
