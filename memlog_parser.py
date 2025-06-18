@@ -185,5 +185,8 @@ if __name__ == "__main__":
     for file in out_dir.iterdir():
         if file.is_file():
             with open(f"{file}.compression", "w", encoding="utf-8") as fh:
-                subprocess.run(["/usr/mmu_compressor", str(file)], stdout=fh, stderr=subprocess.DEVNULL)
+                try:
+                    subprocess.run(["/usr/mmu_compressor", str(file)], stdout=fh, stderr=subprocess.DEVNULL)
+                except Exception as e:
+                    print(f"[compress_error] {{file}}: {{e}}", file=sys.stderr)
     sys.exit(0)
