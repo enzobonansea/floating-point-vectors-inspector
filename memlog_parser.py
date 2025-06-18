@@ -175,6 +175,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Parse Valgrind logs; ignore ALLOCs without STOREs.")
     parser.add_argument("logfile", help="Ruta al fichero .log a procesar")
     args = parser.parse_args()
+    log_path = Path(args.logfile)
+    if not log_path.is_file():
+        print(f"[parse_log] File not found: {log_path}, skipping compression")
+        sys.exit(0)
 
     out_dir = parse_log(args.logfile)
     # Compress each parsed file
