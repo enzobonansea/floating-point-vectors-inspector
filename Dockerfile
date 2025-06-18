@@ -50,12 +50,18 @@ RUN chmod +x /usr/local/bin/spec/fotonik.sh
 COPY spec/memlog-monitor.cfg /usr/cpu2017/config/memlog-monitor.cfg
 RUN sed -i 's/\r$//' /usr/cpu2017/config/memlog-monitor.cfg
 
-COPY memlog_parser.py /usr/memlog_parser.py
 
-# Copy meny
+# Copy menu
 COPY menu.sh /usr/local/bin/menu.sh
 RUN sed -i 's/\r$//' /usr/local/bin/menu.sh
 RUN chmod +x /usr/local/bin/menu.sh
+
+# Install memlog_parser.py
+RUN apt-get update && apt-get install -y python-is-python3 pip
+RUN pip install tqdm
+COPY memlog_parser.py /usr/memlog_parser.py
+
+# TODO: install /usr/mmu_compressor
 
 # Run menu on container init
 CMD ["/usr/local/bin/menu.sh"]
