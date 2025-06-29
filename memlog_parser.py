@@ -168,6 +168,109 @@ def parse_log(log_path: str | os.PathLike) -> Path:
     print(f"[parse_log] Terminado. Ficheros en: {out_dir}")
     return out_dir
 
+# Process parsed files
+def process_compression(parsed_dir: str | os.PathLike) -> Path:
+    parsed_dir = Path(parsed_dir)
+    if not parsed_dir.is_dir():
+        raise NotADirectoryError(parsed_dir)
+
+    analyzed_file = parsed_dir / (parsed_dir.name + ".analyzed")
+    summary_file = parsed_dir / (parsed_dir.name + ".summary")
+
+    total_compression_files = 0
+    successful_compressions = 0
+    total_block_size = 0
+    total_compressed_size = 0
+
+
+    with open(analyzed_file, "w") as outfile:
+        # Imprimir encabezado CSV
+        print("filename,type,block_size,all_zeros,execution_failed,exception,ulr_miss_qty,size_reduced_percentage,validation_passed,lossless,file_size,partially_compressed_lines,total_lines", file=outfile)
+
+        for file in parsed_dir.iterdir():
+            if not file.is_file() or file.suffix == ".compression":
+                continue
+
+            fname = file.name
+            dist_path = file
+            comp_path = file.with_suffix(file.suffix + ".compression")
+
+            splitted_name = fname.split("_")
+            try:
+                block_size = int(splitted_name[-2])
+            except (IndexError, ValueError):
+                block_size = ""
+            try:
+                ftype = splitted_name[-1]
+            except (IndexError, ValueError):
+                ftype = ""
+
+            # Verificar si todas las segundas columnas son 0x0
+            all_zeros = True
+            total_lines = 0
+            with open(dist_path, "r") as infile:
+                for line in infile:
+                    total_lines += 1
+                    parts = line.split()
+                    if len(parts) >= 2 and parts[1] != "0x0":
+                        all_zeros = False
+
+            ulr = ""
+            size_reduced_vals = []
+            validation_passed = False
+            lossless = False
+            execution_failed = False
+            exception = ""
+            partially_compressed_lines = False
+
+            # Leer archivo .compression
+            try:
+                with open(comp_path, "r") as compfile:
+                    output = compfile.read().splitlines()
+                    for line in output:
+                        if "ULR miss qty:" in line:
+                            ulr = int(line.split(':')[1].strip())
+                        if "Size reduced by" in line:
+                            size = float(line.split()[3].replace('%', ''))
+                            size_reduced_vals.append(size)
+                        if "Validation PASSED: All" in line:
+                            validation_passed = True
+                        if "Lossless:" in line:
+                            if "True" in line:
+                                lossless = True
+                                successful_compressions += 1
+            except Exception as e:
+                execution_failed = True
+                exception = str(e)
+
+            size_reduced_percentage = ""
+            if len(size_reduced_vals) >= 2:
+                size_reduced_percentage = size_reduced_vals[1]
+                partially_compressed_lines = size_reduced_vals[1] < size_reduced_vals[0]
+            elif size_reduced_vals:
+                size_reduced_percentage = size_reduced_vals[0]
+                partially_compressed_lines = False
+
+            file_size = os.path.getsize(dist_path)
+
+            # Actualización para el .summary
+            if isinstance(block_size, int):
+                total_block_size += block_size
+            if isinstance(size_reduced_percentage, (int, float, str)) and str(size_reduced_percentage).replace('.', '', 1).isdigit():
+                reduced = float(size_reduced_percentage)
+                total_compressed_size += block_size * (1 - reduced / 100)
+
+            # Imprimir fila CSV
+            print(f"{fname},{ftype},{block_size},{all_zeros},{execution_failed},{exception},{ulr},{size_reduced_percentage},{validation_passed},{lossless},{file_size},{partially_compressed_lines},{total_lines}", file=outfile)
+
+    with open(summary_file, "w") as summary:
+        print("compression_files,successful_compressions,total_block_size,total_compressed_size", file=summary)
+        print(f"{total_compression_files},{successful_compressions},{total_block_size},{int(total_compressed_size)}", file=summary)
+
+    return analyzed_file
+        
+
+
 # -------------------------------------------------------
 if __name__ == "__main__":
     import argparse, subprocess, sys
@@ -189,4 +292,5 @@ if __name__ == "__main__":
                     subprocess.run(["/usr/mmu_compressor", str(file)], stdout=fh, stderr=subprocess.DEVNULL)
                 except Exception as e:
                     print(f"[compress_error] {{file}}: {{e}}", file=sys.stderr)
+    process_compression(out_dir)
     sys.exit(0)
