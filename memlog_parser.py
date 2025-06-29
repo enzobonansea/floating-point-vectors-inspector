@@ -174,15 +174,23 @@ def process_compression(parsed_dir: str | os.PathLike) -> Path:
     if not parsed_dir.is_dir():
         raise NotADirectoryError(parsed_dir)
 
-    out_file = parsed_dir / (parsed_dir.name + ".analyzed")
+    analyzed_file = parsed_dir / (parsed_dir.name + ".analyzed")
+    summary_file = parsed_dir / (parsed_dir.name + ".summary")
 
-    with open(out_file, "w") as outfile:
+    total_compression_files = 0
+    successful_compressions = 0
+    total_block_size = 0
+    total_compressed_size = 0
+
+
+    with open(analyzed_file, "w") as outfile:
         # Imprimir encabezado CSV
         print("filename,type,block_size,all_zeros,execution_failed,exception,ulr_miss_qty,size_reduced_percentage,validation_passed,lossless,file_size,partially_compressed_lines,total_lines", file=outfile)
 
         for file in parsed_dir.iterdir():
             if not file.is_file() or file.suffix == ".compression":
                 continue
+
             fname = file.name
             dist_path = file
             comp_path = file.with_suffix(file.suffix + ".compression")
@@ -228,7 +236,9 @@ def process_compression(parsed_dir: str | os.PathLike) -> Path:
                         if "Validation PASSED: All" in line:
                             validation_passed = True
                         if "Lossless:" in line:
-                            lossless = "True" in line
+                            if "True" in line:
+                                lossless = True
+                                successful_compressions += 1
             except Exception as e:
                 execution_failed = True
                 exception = str(e)
@@ -243,8 +253,22 @@ def process_compression(parsed_dir: str | os.PathLike) -> Path:
 
             file_size = os.path.getsize(dist_path)
 
+            # Actualización para el .summary
+            if isinstance(block_size, int):
+                total_block_size += block_size
+            if isinstance(size_reduced_percentage, (int, float, str)) and str(size_reduced_percentage).replace('.', '', 1).isdigit():
+                reduced = float(size_reduced_percentage)
+                total_compressed_size += block_size * (1 - reduced / 100)
+
             # Imprimir fila CSV
             print(f"{fname},{ftype},{block_size},{all_zeros},{execution_failed},{exception},{ulr},{size_reduced_percentage},{validation_passed},{lossless},{file_size},{partially_compressed_lines},{total_lines}", file=outfile)
+
+    with open(summary_file, "w") as summary:
+        print("compression_files,successful_compressions,total_block_size,total_compressed_size", file=summary)
+        print(f"{total_compression_files},{successful_compressions},{total_block_size},{int(total_compressed_size)}", file=summary)
+
+    return analyzed_file
+        
 
 
 # -------------------------------------------------------
