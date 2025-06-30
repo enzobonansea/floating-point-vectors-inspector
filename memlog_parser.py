@@ -276,23 +276,36 @@ if __name__ == "__main__":
     import argparse, subprocess, sys
 
     parser = argparse.ArgumentParser(description="Parse Valgrind logs; ignore ALLOCs without STOREs.")
-    parser.add_argument("logfile", help="Ruta al fichero .log a procesar")
+    parser.add_argument("logfile", nargs='?', help="Ruta al fichero .log a procesar")
     parser.add_argument("--compress", default=True, action=argparse.BooleanOptionalAction, help="Compress parsed files (default: True)")
+    parser.add_argument("--parsed-dir", default=None, help="Path to an existing parsed directory to process (skips parsing)")
     args = parser.parse_args()
-    log_path = Path(args.logfile)
-    if not log_path.is_file():
-        print(f"[parse_log] File not found: {log_path}, skipping compression")
-        sys.exit(0)
+    
+    if args.parsed_dir:
+        # Use existing parsed directory
+        out_dir = Path(args.parsed_dir)
+        if not out_dir.is_dir():
+            print(f"[parse_log] Parsed directory not found: {out_dir}")
+            sys.exit(1)
+    else:
+        # Parse log file
+        if not args.logfile:
+            print("[parse_log] Error: logfile is required when --parsed-dir is not provided")
+            sys.exit(1)
+        log_path = Path(args.logfile)
+        if not log_path.is_file():
+            print(f"[parse_log] File not found: {log_path}, skipping compression")
+            sys.exit(0)
 
-    out_dir = parse_log(args.logfile)
-    # Compress each parsed file
-    if args.compress:
-        for file in out_dir.iterdir():
-            if file.is_file():
-                with open(f"{file}.compression", "w", encoding="utf-8") as fh:
-                    try:
-                        subprocess.run(["/usr/mmu_compressor", str(file)], stdout=fh, stderr=subprocess.DEVNULL)
-                    except Exception as e:
-                        print(f"[compress_error] {{file}}: {{e}}", file=sys.stderr)
+        out_dir = parse_log(args.logfile)
+        # Compress each parsed file
+        if args.compress:
+            for file in out_dir.iterdir():
+                if file.is_file():
+                    with open(f"{file}.compression", "w", encoding="utf-8") as fh:
+                        try:
+                            subprocess.run(["/usr/mmu_compressor", str(file)], stdout=fh, stderr=subprocess.DEVNULL)
+                        except Exception as e:
+                            print(f"[compress_error] {{file}}: {{e}}", file=sys.stderr)
     process_compression(out_dir)
     sys.exit(0)
