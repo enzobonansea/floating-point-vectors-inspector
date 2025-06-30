@@ -277,6 +277,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Parse Valgrind logs; ignore ALLOCs without STOREs.")
     parser.add_argument("logfile", help="Ruta al fichero .log a procesar")
+    parser.add_argument("--compress", default=True, action=argparse.BooleanOptionalAction, help="Compress parsed files (default: True)")
     args = parser.parse_args()
     log_path = Path(args.logfile)
     if not log_path.is_file():
@@ -285,12 +286,13 @@ if __name__ == "__main__":
 
     out_dir = parse_log(args.logfile)
     # Compress each parsed file
-    for file in out_dir.iterdir():
-        if file.is_file():
-            with open(f"{file}.compression", "w", encoding="utf-8") as fh:
-                try:
-                    subprocess.run(["/usr/mmu_compressor", str(file)], stdout=fh, stderr=subprocess.DEVNULL)
-                except Exception as e:
-                    print(f"[compress_error] {{file}}: {{e}}", file=sys.stderr)
+    if args.compress:
+        for file in out_dir.iterdir():
+            if file.is_file():
+                with open(f"{file}.compression", "w", encoding="utf-8") as fh:
+                    try:
+                        subprocess.run(["/usr/mmu_compressor", str(file)], stdout=fh, stderr=subprocess.DEVNULL)
+                    except Exception as e:
+                        print(f"[compress_error] {{file}}: {{e}}", file=sys.stderr)
     process_compression(out_dir)
     sys.exit(0)
