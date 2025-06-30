@@ -191,6 +191,7 @@ def process_compression(parsed_dir: str | os.PathLike) -> Path:
             if not file.is_file() or file.suffix == ".compression":
                 continue
 
+            total_compression_files += 1
             fname = file.name
             dist_path = file
             comp_path = file.with_suffix(file.suffix + ".compression")
