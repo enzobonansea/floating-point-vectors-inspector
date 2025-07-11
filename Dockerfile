@@ -31,6 +31,7 @@ FROM base AS spec-builder
 COPY cpu2017-1.1.9.iso /opt/spec/cpu2017.iso
 RUN mkdir -p /usr/cpu2017 \
     && bsdtar -C /usr/cpu2017 -xf /opt/spec/cpu2017.iso \
+    && chmod +x /usr/cpu2017/install.sh \
     && echo -e "/usr/cpu2017\nyes" | /usr/cpu2017/install.sh \
     && rm /opt/spec/cpu2017.iso
 
@@ -60,7 +61,9 @@ RUN sed -i -e 's/\r$//' autogen.sh && find . -type f -exec sed -i -e 's/\r$//' {
 FROM base AS mmu-builder
 COPY py-Compress-Simulator /opt/py-Compress-Simulator
 WORKDIR /opt/py-Compress-Simulator
-RUN chmod +x mmu_executable_builder.sh && ./mmu_executable_builder.sh
+RUN sed -i 's/\r$//' mmu_executable_builder.sh \
+    && chmod +x mmu_executable_builder.sh \
+    && ./mmu_executable_builder.sh
 
 # =============================================================================
 # Stage 6: Final runtime image
@@ -89,9 +92,9 @@ COPY spec/fprate.sh /usr/local/bin/spec/fprate.sh
 COPY spec/memlog-monitor.cfg /usr/cpu2017/config/memlog-monitor.cfg
 
 # Fix line endings and make scripts executable
-RUN find /usr/local/bin/spec -name "*.sh" -exec sed -i 's/\r$//' {} \; \
-    && find /usr/local/bin/spec -name "*.sh" -exec chmod +x {} \; \
-    && sed -i 's/\r$//' /usr/cpu2017/config/memlog-monitor.cfg
+RUN find /usr/local/bin/spec -name "*.sh" -exec sed -i 's/\r$//' {} \; && \
+    find /usr/local/bin/spec -name "*.sh" -exec chmod +x {} \; && \
+    sed -i 's/\r$//' /usr/cpu2017/config/memlog-monitor.cfg
 
 # Copy and setup menu
 COPY menu.sh /usr/local/bin/menu.sh
