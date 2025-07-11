@@ -62,6 +62,7 @@ FROM base AS mmu-builder
 COPY py-Compress-Simulator /opt/py-Compress-Simulator
 WORKDIR /opt/py-Compress-Simulator
 RUN sed -i 's/\r$//' mmu_executable_builder.sh \
+    && sed -i 's/\r$//' mmu_executable.py \
     && chmod +x mmu_executable_builder.sh \
     && ./mmu_executable_builder.sh
 
@@ -103,6 +104,8 @@ RUN sed -i 's/\r$//' /usr/local/bin/menu.sh \
 
 # Copy memlog parser
 COPY memlog_parser.py /usr/memlog_parser.py
+RUN sed -i 's/\r$//' /usr/memlog_parser.py \
+    && chmod +x /usr/memlog_parser.py
 
 # Set working directory
 WORKDIR /workspace

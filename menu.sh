@@ -12,8 +12,8 @@ while true; do
     case $choice in
         1)
             echo "Testing alloc.c ..."
-            valgrind --tool=memcheck --leak-check=no --track-origins=no --log-file=/tmp/memlog.log --undef-value-errors=no --time-stamp=yes -- /usr/alloc
-            echo "Analyze /tmp/memlog.log"
+            valgrind --tool=memcheck --leak-check=no --track-origins=no --log-file=/tmp/alloc.log --undef-value-errors=no --time-stamp=yes -- /usr/alloc
+            /usr/memlog_parser.py /tmp/alloc.log
             /bin/bash
             ;;
         2)
