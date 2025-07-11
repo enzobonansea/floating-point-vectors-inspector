@@ -61,7 +61,11 @@ RUN apt-get update && apt-get install -y python-is-python3 pip
 RUN pip install tqdm
 COPY memlog_parser.py /usr/memlog_parser.py
 
-# TODO: install /usr/mmu_compressor
+# Copy and build mmu_compressor
+COPY py-Compress-Simulator /opt/py-Compress-Simulator
+WORKDIR /opt/py-Compress-Simulator
+RUN chmod +x mmu_executable_builder.sh && ./mmu_executable_builder.sh
+RUN cp dist/mmu_compressor /usr/mmu_compressor
 
 # Run menu on container init
 CMD ["/usr/local/bin/menu.sh"]
