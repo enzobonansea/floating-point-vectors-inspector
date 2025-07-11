@@ -3,15 +3,9 @@
 while true; do
     echo "Select an option:"
     echo "1. Test alloc.c"
-    echo "2. Run bash"
-    echo "3. Exit"
-    echo "4. Test lbm avoiding runspec"
-    echo "5. Test namd avoiding runspec"
-    echo "6. Test bwaves avoiding runspec"
-    echo "7. Test nab avoiding runspec"
-    echo "8. Test wrf avoiding runspec"
-    echo "9. Test fotonik with runspec monitor"
-    echo "10. Test fprate with runspec monitor"
+    echo "2. Test fprate with runspec monitor"
+    echo "3. Run bash"
+    echo "4. Exit"
 
     read -p "Enter your choice: " choice
 
@@ -23,40 +17,16 @@ while true; do
             /bin/bash
             ;;
         2)
+            /usr/local/bin/spec/fprate.sh
+            /bin/bash
+            ;;
+        3)
             bash
             exit 0
             ;;
-        3)
+        4)
             echo "Exiting..."
             exit 0
-            ;;
-        4)
-            /usr/local/bin/spec/lbm.sh
-            /bin/bash
-            ;;
-        5)
-            /usr/local/bin/spec/namd.sh
-            /bin/bash
-            ;;
-        6)
-            /usr/local/bin/spec/bwaves.sh
-            /bin/bash
-            ;;
-        7)
-            /usr/local/bin/spec/nab.sh
-            /bin/bash
-            ;;
-        8)
-            /usr/local/bin/spec/wrf.sh
-            /bin/bash
-            ;;
-        9)
-            /usr/local/bin/spec/fotonik.sh
-            /bin/bash
-            ;;
-        10)
-            /usr/local/bin/spec/fprate.sh
-            /bin/bash
             ;;
         *)
             echo "Invalid option."
