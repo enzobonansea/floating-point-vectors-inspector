@@ -102,6 +102,11 @@ COPY menu.sh /usr/local/bin/menu.sh
 RUN sed -i 's/\r$//' /usr/local/bin/menu.sh \
     && chmod +x /usr/local/bin/menu.sh
 
+# Copy analyze script
+COPY analyze.sh /usr/local/bin/analyze.sh
+RUN sed -i 's/\r$//' /usr/local/bin/analyze.sh \
+    && chmod +x /usr/local/bin/analyze.sh
+
 # Copy memlog parser
 COPY memlog_parser.py /usr/memlog_parser.py
 RUN sed -i 's/\r$//' /usr/memlog_parser.py \
