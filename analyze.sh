@@ -28,7 +28,7 @@ echo "Running valgrind on $EXECUTABLE..."
 echo "Log file: $LOG_FILE"
 
 # Run valgrind
-valgrind --tool=memcheck --leak-check=no --track-origins=no --log-file="$LOG_FILE" --undef-value-errors=no --time-stamp=yes -- "$EXECUTABLE"
+/opt/valgrind/inst/bin/valgrind --tool=memcheck --leak-check=no --track-origins=no --log-file="$LOG_FILE" --undef-value-errors=no --time-stamp=yes -- "$EXECUTABLE"
 
 # Check if valgrind ran successfully
 if [ $? -eq 0 ]; then
