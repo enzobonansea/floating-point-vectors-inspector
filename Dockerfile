@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y \
     libarchive-tools \
     gfortran \
     python-is-python3 \
+    python3-venv \
     pip \
     && rm -rf /var/lib/apt/lists/* \
     && pip install tqdm
@@ -64,7 +65,64 @@ WORKDIR /opt/py-Compress-Simulator
 RUN sed -i 's/\r$//' mmu_executable_builder.sh \
     && sed -i 's/\r$//' mmu_executable.py \
     && chmod +x mmu_executable_builder.sh \
-    && ./mmu_executable_builder.sh
+    && ./mmu_executable_builder.sh \
+    && echo "Testing MMU Compressor executable..." \
+    && if [ -f "dist/mmu_compressor" ]; then \
+         echo "Found onefile executable, testing basic functionality..." && \
+         echo "Creating test data file..." && \
+         echo "0.123 4547244032" > test_0x4b50040_8_dist64.txt && \
+         echo "0.456 4547244036" >> test_0x4b50040_8_dist64.txt && \
+         echo "0.789 4547244040" >> test_0x4b50040_8_dist64.txt && \
+         echo "Test data file contents:" && \
+         cat test_0x4b50040_8_dist64.txt && \
+         echo "Executable details:" && \
+         ls -la dist/mmu_compressor && \
+         echo "Running basic test to check if executable starts..." && \
+         timeout 5 ./dist/mmu_compressor --help 2>&1 | head -20 && \
+         echo "Running executable test with data..." && \
+         timeout 30 ./dist/mmu_compressor test_0x4b50040_8_dist64.txt --max-writes 3 2>&1 | head -50 && \
+         echo "✓ MMU Compressor executable test PASSED" || \
+         (echo "✗ MMU Compressor executable test FAILED"; \
+          echo "Executable info:"; \
+          ls -la dist/mmu_compressor; \
+          echo "File type:"; \
+          file dist/mmu_compressor; \
+          echo "Last 50 lines of build log:"; \
+          tail -50 /tmp/build.log 2>/dev/null || echo "No build log found"; \
+          echo "Trying to run with verbose output:"; \
+          timeout 10 ./dist/mmu_compressor --help 2>&1 || echo "Help command failed"; \
+          exit 1); \
+       elif [ -f "dist/mmu_compressor/mmu_compressor" ]; then \
+         echo "Found directory-based executable, testing basic functionality..." && \
+         echo "Creating test data file..." && \
+         echo "0.123 4547244032" > test_0x4b50040_8_dist64.txt && \
+         echo "0.456 4547244036" >> test_0x4b50040_8_dist64.txt && \
+         echo "0.789 4547244040" >> test_0x4b50040_8_dist64.txt && \
+         echo "Test data file contents:" && \
+         cat test_0x4b50040_8_dist64.txt && \
+         echo "Executable details:" && \
+         ls -la dist/mmu_compressor/mmu_compressor && \
+         echo "Running basic test to check if executable starts..." && \
+         timeout 5 ./dist/mmu_compressor/mmu_compressor --help 2>&1 | head -20 && \
+         echo "Running executable test with data..." && \
+         timeout 30 ./dist/mmu_compressor/mmu_compressor test_0x4b50040_8_dist64.txt --max-writes 3 2>&1 | head -50 && \
+         echo "✓ MMU Compressor executable test PASSED" || \
+         (echo "✗ MMU Compressor executable test FAILED"; \
+          echo "Executable info:"; \
+          ls -la dist/mmu_compressor/mmu_compressor; \
+          echo "File type:"; \
+          file dist/mmu_compressor/mmu_compressor; \
+          echo "Last 50 lines of build log:"; \
+          tail -50 /tmp/build.log 2>/dev/null || echo "No build log found"; \
+          echo "Trying to run with verbose output:"; \
+          timeout 10 ./dist/mmu_compressor/mmu_compressor --help 2>&1 || echo "Help command failed"; \
+          exit 1); \
+       else \
+         echo "ERROR: No MMU Compressor executable found!" && \
+         echo "Contents of dist directory:"; \
+         ls -la dist/ || echo "dist directory not found"; \
+         exit 1; \
+       fi
 
 # =============================================================================
 # Stage 6: Final runtime image
