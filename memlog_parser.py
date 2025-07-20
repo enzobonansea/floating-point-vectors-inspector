@@ -170,6 +170,22 @@ def parse_log(log_path: str | os.PathLike) -> Path:
 
 # Process parsed files
 def process_compression(parsed_dir: str | os.PathLike) -> Path:
+    """Procesa el análisis de compresión para archivos de registro de memoria.
+    
+    Esta función procesa pares de archivos en el directorio de entrada:
+    - Archivos de entrada: Archivos de registro de memoria (cualquier extensión excepto .compression)
+    - Archivos de compresión: Archivos .compression correspondientes con los resultados del análisis
+    
+    Convención de nombres:
+    - Los archivos de entrada deben seguir el patrón: <nombre>_<tamaño_bloque>_<tipo>
+    - Los archivos de compresión deben llamarse: <nombre_archivo_entrada>.compression
+    
+    Args:
+        parsed_dir: Directorio que contiene los archivos a procesar
+        
+    Returns:
+        Ruta al archivo .analyzed generado
+    """
     parsed_dir = Path(parsed_dir)
     if not parsed_dir.is_dir():
         raise NotADirectoryError(parsed_dir)
@@ -182,13 +198,17 @@ def process_compression(parsed_dir: str | os.PathLike) -> Path:
     total_block_size = 0
     total_compressed_size = 0
 
-
     with open(analyzed_file, "w") as outfile:
         # Imprimir encabezado CSV
         print("filename,type,block_size,all_zeros,execution_failed,exception,error_type,ulr_miss_qty,size_reduced_percentage,validation_passed,lossless,file_size,partially_compressed_lines,total_lines", file=outfile)
 
         for file in parsed_dir.iterdir():
             if not file.is_file() or file.suffix == ".compression":
+                continue
+            
+            comp_path = file.with_suffix(file.suffix + ".compression")
+            if not comp_path.exists():
+                print(f"Warning: No corresponding .compression file found for {file.name}", file=sys.stderr)
                 continue
 
             total_compression_files += 1
