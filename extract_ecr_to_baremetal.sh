@@ -4,7 +4,8 @@
 set -e
 
 # Replace with your actual image tag from ECR
-ECR_IMAGE="764515255972.dkr.ecr.eu-north-1.amazonaws.com/computer-science/floating-point-vectors-inspector:YOUR_TAG_HERE"
+ECR_IMAGE="764515255972.dkr.ecr.eu-north-1.amazonaws.com/computer-science/floating-point-vectors-inspector:main-a813abf_pyc-5bfcdef
+"
 
 # Or use latest if you want the most recent
 # ECR_IMAGE="764515255972.dkr.ecr.eu-north-1.amazonaws.com/computer-science/floating-point-vectors-inspector:latest"
