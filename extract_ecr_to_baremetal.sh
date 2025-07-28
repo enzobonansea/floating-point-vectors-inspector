@@ -13,13 +13,6 @@ echo "=== Installing Docker and AWS CLI ==="
 sudo apt-get update
 sudo apt-get install -y docker.io curl unzip
 
-# Install AWS CLI v2
-echo "Installing AWS CLI v2..."
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-unzip awscliv2.zip
-sudo ./aws/install
-rm -rf aws awscliv2.zip
-
 echo "=== Logging into ECR ==="
 aws ecr get-login-password --region eu-north-1 | sudo docker login --username AWS --password-stdin 764515255972.dkr.ecr.eu-north-1.amazonaws.com
 
