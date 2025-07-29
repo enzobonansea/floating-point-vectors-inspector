@@ -1,0 +1,100 @@
+name: CI/CD Pipeline for Floating Point Vectors Inspector
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-push-ecr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-north-1
+
+      - name: Make scripts executable
+        run: |
+          chmod +x build_and_push_ecr.sh
+          chmod +x extract_ecr_to_baremetal.sh
+
+      - name: Build and push Docker image to ECR
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          ./build_and_push_ecr.sh
+
+      - name: Get generated image tag
+        id: get_tag
+        run: |
+          MAIN_COMMIT=$(git rev-parse --short HEAD)
+          PY_COMPRESS_COMMIT=$(git -C py-Compress-Simulator rev-parse --short HEAD 2>/dev/null || echo "no-submodule")
+          IMAGE_TAG="main-${MAIN_COMMIT}_pyc-${PY_COMPRESS_COMMIT}"
+          echo "tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Upload image tag artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-tag
+          path: |
+            ${{ github.workspace }}/
+        # The tag is available as ${{ steps.get_tag.outputs.tag }}
+
+  deploy-to-baremetal:
+    needs: build-and-push-ecr
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Download image tag artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: image-tag
+
+      - name: Get generated image tag
+        id: get_tag
+        run: |
+          MAIN_COMMIT=$(git rev-parse --short HEAD)
+          PY_COMPRESS_COMMIT=$(git -C py-Compress-Simulator rev-parse --short HEAD 2>/dev/null || echo "no-submodule")
+          IMAGE_TAG="main-${MAIN_COMMIT}_pyc-${PY_COMPRESS_COMMIT}"
+          echo "tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Update ECR_IMAGE in extract_ecr_to_baremetal.sh
+        run: |
+          sed -i "s|^ECR_IMAGE=.*|ECR_IMAGE=\"764515255972.dkr.ecr.eu-north-1.amazonaws.com/computer-science/floating-point-vectors-inspector:${{ steps.get_tag.outputs.tag }}\"|" extract_ecr_to_baremetal.sh
+
+      - name: Copy deployment script to baremetal host
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.BAREMETAL_HOST }}
+          username: ${{ secrets.BAREMETAL_USER }}
+          key: ${{ secrets.BAREMETAL_SSH_KEY }}
+          port: ${{ secrets.BAREMETAL_PORT }}
+          source: "extract_ecr_to_baremetal.sh"
+          target: "~/extract_ecr_to_baremetal.sh"
+
+      - name: Run deployment script on baremetal host
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.BAREMETAL_HOST }}
+          username: ${{ secrets.BAREMETAL_USER }}
+          key: ${{ secrets.BAREMETAL_SSH_KEY }}
+          port: ${{ secrets.BAREMETAL_PORT }}
+          script: |
+            chmod +x ~/extract_ecr_to_baremetal.sh
+            sudo ~/extract_ecr_to_baremetal.sh
