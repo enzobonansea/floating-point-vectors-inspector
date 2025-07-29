@@ -6,6 +6,16 @@ set -e
 # Replace with your actual image tag from ECR
 ECR_IMAGE="764515255972.dkr.ecr.eu-north-1.amazonaws.com/computer-science/floating-point-vectors-inspector:main-a813abf_pyc-5bfcdef"
 
+# Or use latest if you want the most recent
+# ECR_IMAGE="764515255972.dkr.ecr.eu-north-1.amazonaws.com/computer-science/floating-point-vectors-inspector:latest"
+
+echo "=== Installing Docker and AWS CLI ==="
+sudo apt-get update
+sudo apt-get install -y docker.io awscli
+
+echo "=== Logging into ECR ==="
+aws ecr get-login-password --region eu-north-1 | sudo docker login --username AWS --password-stdin 764515255972.dkr.ecr.eu-north-1.amazonaws.com
+
 echo "=== Pulling your image ==="
 sudo docker pull $ECR_IMAGE
 
