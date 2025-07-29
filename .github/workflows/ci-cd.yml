@@ -11,6 +11,10 @@ jobs:
   build-and-push-ecr:
     runs-on: ubuntu-latest
     steps:
+      - name: Set up GitLab credentials for submodules
+        run: |
+          git config --global url."https://oauth2:${{ secrets.GITLAB_TOKEN }}@gitlab.licar.exp.dc.uba.ar/".insteadOf "https://gitlab.licar.exp.dc.uba.ar/"
+
       - name: Checkout repository (with submodules)
         uses: actions/checkout@v4
         with:
@@ -58,6 +62,10 @@ jobs:
     needs: build-and-push-ecr
     runs-on: ubuntu-latest
     steps:
+      - name: Set up GitLab credentials for submodules
+        run: |
+          git config --global url."https://oauth2:${{ secrets.GITLAB_TOKEN }}@gitlab.licar.exp.dc.uba.ar/".insteadOf "https://gitlab.licar.exp.dc.uba.ar/"
+
       - name: Checkout repository (with submodules)
         uses: actions/checkout@v4
         with:
