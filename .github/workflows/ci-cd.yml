@@ -1,9 +1,11 @@
+
 name: CI/CD Pipeline for Floating Point Vectors Inspector
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   build-and-push-ecr:
