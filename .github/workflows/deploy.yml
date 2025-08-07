@@ -7,6 +7,10 @@ on:
         description: 'The image tag to deploy'
         required: true
         type: string
+      baremetal_host:
+        description: 'BAREMETAL_HOST IP address (optional, overrides secret)'
+        required: false
+        type: string
     secrets:
       BAREMETAL_HOST:
         required: true
@@ -40,7 +44,7 @@ jobs:
       - name: Copy deployment script to baremetal host
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.BAREMETAL_HOST }}
+          host: ${{ inputs.baremetal_host != '' && inputs.baremetal_host || secrets.BAREMETAL_HOST }}
           username: ${{ secrets.BAREMETAL_USER }}
           key: ${{ secrets.BAREMETAL_SSH_KEY }}
           port: ${{ secrets.BAREMETAL_PORT }}
@@ -51,7 +55,7 @@ jobs:
       - name: Run deployment script on baremetal host
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.BAREMETAL_HOST }}
+          host: ${{ inputs.baremetal_host != '' && inputs.baremetal_host || secrets.BAREMETAL_HOST }}
           username: ${{ secrets.BAREMETAL_USER }}
           key: ${{ secrets.BAREMETAL_SSH_KEY }}
           port: ${{ secrets.BAREMETAL_PORT }}
