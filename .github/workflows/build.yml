@@ -136,4 +136,4 @@ jobs:
       - name: Notify about deployment
         run: |
           echo "::notice::Image built and pushed successfully with tag: ${{ needs.checkout-code.outputs.tag }}"
-          echo "::notice::To deploy to a baremetal host, use the 'Deploy to Baremetal' workflow with this tag."
+          echo "::notice::To deploy to a baremetal host, use the 'Deploy to EC2' workflow with this tag."
