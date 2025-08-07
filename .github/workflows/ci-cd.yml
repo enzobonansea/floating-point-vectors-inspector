@@ -19,7 +19,7 @@ jobs:
 
       - name: Configure git for GitLab submodules
         run: |
-          git config --global url."https://oauth2:${{ secrets.GITLAB_TOKEN }}@gitlab.licar.exp.dc.uba.ar/".insteadOf "https://gitlab.licar.exp.dc.uba.ar/"
+          git config --global url."https://git:${{ secrets.GITLAB_TOKEN }}@gitlab.licar.exp.dc.uba.ar/".insteadOf "https://gitlab.licar.exp.dc.uba.ar/"
 
       - name: Manually update submodules
         env:
