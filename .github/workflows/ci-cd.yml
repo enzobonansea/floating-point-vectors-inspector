@@ -10,7 +10,7 @@ jobs:
   checkout-code:
     runs-on: ubuntu-latest
     outputs:
-      IMAGE_TAG: ${{ steps.get_tag.outputs.tag }}
+      tag: ${{ steps.get_tag.outputs.tag }}
     steps:
       - name: Checkout repository (no submodules)
         uses: actions/checkout@v4
