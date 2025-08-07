@@ -26,6 +26,7 @@ jobs:
           GIT_ASKPASS: /bin/echo
         run: |
           git submodule sync
+          git config submodule.py-Compress-Simulator.url "https://git:${{ secrets.GITLAB_TOKEN }}@gitlab.licar.exp.dc.uba.ar/licar/py-Compress-Simulator"
           git submodule update --init --recursive
 
       - name: Make scripts executable
