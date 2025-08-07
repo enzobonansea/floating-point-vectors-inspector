@@ -132,7 +132,7 @@ jobs:
 
   deploy-image:
     needs: [checkout-code, build-and-push-image]
-    uses: ./.github/workflows/deploy.yml
+    uses: enzobonansea/floating-point-vectors-inspector/.github/workflows/deploy.yml@main
     with:
       tag: ${{ needs.checkout-code.outputs.tag }}
     secrets:
