@@ -16,7 +16,11 @@ ECR_IMAGE="764515255972.dkr.ecr.eu-north-1.amazonaws.com/computer-science/floati
 
 echo "=== Installing Docker and AWS CLI ==="
 sudo apt-get update
-sudo apt-get install -y docker.io awscli
+sudo apt-get install -y docker.io curl unzip
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+rm -rf awscliv2.zip aws/
 
 echo "=== Logging into ECR ==="
 aws ecr get-login-password --region eu-north-1 | sudo docker login --username AWS --password-stdin 764515255972.dkr.ecr.eu-north-1.amazonaws.com
