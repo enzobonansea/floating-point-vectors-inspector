@@ -9,43 +9,22 @@ on:
         default: 'no'
 
 jobs:
-  deploy-latest:
+  validate:
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.confirm == 'yes' }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Create latest tag file
-        run: |
-          echo "latest" > .ecr_image_tag
-          cat .ecr_image_tag
-
-      - name: Make script executable
-        run: |
-          chmod +x extract_ecr_to_baremetal.sh
-          ls -la
-
-      - name: Copy deployment script and tag file to baremetal host
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.BAREMETAL_HOST }}
-          username: ${{ secrets.BAREMETAL_USER }}
-          key: ${{ secrets.BAREMETAL_SSH_KEY }}
-          port: ${{ secrets.BAREMETAL_PORT }}
-          source: |
-            extract_ecr_to_baremetal.sh
-            .ecr_image_tag
-          target: "~/"
-          overwrite: true
-
-      - name: Run deployment script on baremetal host
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.BAREMETAL_HOST }}
-          username: ${{ secrets.BAREMETAL_USER }}
-          key: ${{ secrets.BAREMETAL_SSH_KEY }}
-          port: ${{ secrets.BAREMETAL_PORT }}
-          script: |
-            chmod +x ~/extract_ecr_to_baremetal.sh
-            sudo ~/extract_ecr_to_baremetal.sh
+      - name: Validation check
+        run: echo "Deployment of latest image confirmed"
+    
+  deploy-latest:
+    needs: validate
+    uses: ./.github/workflows/deploy.yml
+    with:
+      tag: latest
+    secrets:
+      BAREMETAL_HOST: ${{ secrets.BAREMETAL_HOST }}
+      BAREMETAL_USER: ${{ secrets.BAREMETAL_USER }}
+      BAREMETAL_SSH_KEY: ${{ secrets.BAREMETAL_SSH_KEY }}
+      BAREMETAL_PORT: ${{ secrets.BAREMETAL_PORT }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}

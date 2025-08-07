@@ -132,55 +132,13 @@ jobs:
 
   deploy-image:
     needs: [checkout-code, build-and-push-image]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code directly
-        uses: actions/checkout@v4
-        with:
-          submodules: true
-
-      - name: Create ECR image tag file
-        run: |
-          # Use tag from checkout-code job
-          TAG="${{ needs.checkout-code.outputs.tag }}"
-          
-          # If tag is empty, generate it directly from the current repo
-          if [ -z "$TAG" ]; then
-            echo "Generating tag from current repository"
-            MAIN_COMMIT=$(git rev-parse --short HEAD)
-            PY_COMPRESS_COMMIT=$(git -C py-Compress-Simulator rev-parse --short HEAD 2>/dev/null || echo "no-submodule")
-            TAG="fpvi-${MAIN_COMMIT}_pycs-${PY_COMPRESS_COMMIT}"
-          fi
-          
-          echo "Using tag: $TAG"
-          echo "$TAG" > .ecr_image_tag
-          cat .ecr_image_tag
-
-      - name: Make script executable
-        run: |
-          chmod +x extract_ecr_to_baremetal.sh
-          ls -la
-
-      - name: Copy deployment script and tag file to baremetal host
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.BAREMETAL_HOST }}
-          username: ${{ secrets.BAREMETAL_USER }}
-          key: ${{ secrets.BAREMETAL_SSH_KEY }}
-          port: ${{ secrets.BAREMETAL_PORT }}
-          source: |
-            extract_ecr_to_baremetal.sh
-            .ecr_image_tag
-          target: "~/"
-          overwrite: true
-
-      - name: Run deployment script on baremetal host
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.BAREMETAL_HOST }}
-          username: ${{ secrets.BAREMETAL_USER }}
-          key: ${{ secrets.BAREMETAL_SSH_KEY }}
-          port: ${{ secrets.BAREMETAL_PORT }}
-          script: |
-            chmod +x ~/extract_ecr_to_baremetal.sh
-            sudo ~/extract_ecr_to_baremetal.sh
+    uses: ./.github/workflows/deploy.yml
+    with:
+      tag: ${{ needs.checkout-code.outputs.tag }}
+    secrets:
+      BAREMETAL_HOST: ${{ secrets.BAREMETAL_HOST }}
+      BAREMETAL_USER: ${{ secrets.BAREMETAL_USER }}
+      BAREMETAL_SSH_KEY: ${{ secrets.BAREMETAL_SSH_KEY }}
+      BAREMETAL_PORT: ${{ secrets.BAREMETAL_PORT }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
