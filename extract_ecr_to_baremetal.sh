@@ -28,10 +28,16 @@ fi
 rm -rf awscliv2.zip aws/
 
 echo "=== Configuring AWS credentials ==="
+# Print variables for debugging (will be masked in logs)
+echo "AWS_ACCESS_KEY_ID is ${AWS_ACCESS_KEY_ID:+set}"
+echo "AWS_SECRET_ACCESS_KEY is ${AWS_SECRET_ACCESS_KEY:+set}"
+
 if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
   echo "ERROR: AWS credentials not set. This script is intended for CI/CD use only."
   exit 1
 fi
+
+# Explicitly export the credentials again to ensure they're available
 export AWS_ACCESS_KEY_ID
 export AWS_SECRET_ACCESS_KEY
 export AWS_DEFAULT_REGION="eu-north-1"

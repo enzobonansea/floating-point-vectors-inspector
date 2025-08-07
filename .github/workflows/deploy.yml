@@ -63,4 +63,4 @@ jobs:
             export AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
             export AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
             chmod +x ~/extract_ecr_to_baremetal.sh
-            sudo ~/extract_ecr_to_baremetal.sh
+            sudo -E AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" ~/extract_ecr_to_baremetal.sh
