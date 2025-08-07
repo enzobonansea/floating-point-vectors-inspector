@@ -29,13 +29,8 @@ rm -rf awscliv2.zip aws/
 
 echo "=== Configuring AWS credentials ==="
 if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
-  if [ -f ".aws_env" ]; then
-    echo "Reading AWS credentials from .aws_env file."
-    source .aws_env
-  else
-    echo "ERROR: AWS credentials not set and .aws_env file not found."
-    exit 1
-  fi
+  echo "ERROR: AWS credentials not set. Please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY as environment variables."
+  exit 1
 fi
 export AWS_ACCESS_KEY_ID
 export AWS_SECRET_ACCESS_KEY
