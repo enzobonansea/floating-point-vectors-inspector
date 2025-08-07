@@ -7,6 +7,9 @@ on:
         description: 'Type "yes" to confirm deployment of latest image'
         required: true
         default: 'no'
+      baremetal_host:
+        description: 'BAREMETAL_HOST IP address'
+        required: true
 
 jobs:
   validate:
@@ -21,8 +24,8 @@ jobs:
     uses: ./.github/workflows/deploy.yml
     with:
       tag: latest
+      baremetal_host: ${{ github.event.inputs.baremetal_host }}
     secrets:
-      BAREMETAL_HOST: ${{ secrets.BAREMETAL_HOST }}
       BAREMETAL_USER: ${{ secrets.BAREMETAL_USER }}
       BAREMETAL_SSH_KEY: ${{ secrets.BAREMETAL_SSH_KEY }}
       BAREMETAL_PORT: ${{ secrets.BAREMETAL_PORT }}
