@@ -127,7 +127,7 @@ jobs:
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
   deploy-image:
-    needs: build-and-push-image
+    needs: [checkout-code, build-and-push-image]
     runs-on: ubuntu-latest
     steps:
       - name: Download code and tag artifact
@@ -135,18 +135,26 @@ jobs:
         with:
           name: code-and-tag
 
+      - name: Fix file permissions
+        run: |
+          chmod +x ./extract_ecr_to_baremetal.sh
+          ls -la
+
       - name: Write ECR image tag to file
         run: |
+          # Use tag from checkout-code job
           TAG="${{ needs.checkout-code.outputs.tag }}"
+          
+          # If tag is empty, use a fallback method
           if [ -z "$TAG" ]; then
             echo "WARNING: Using fallback tag calculation method"
-            MAIN_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-            PY_COMPRESS_COMMIT=$(git -C py-Compress-Simulator rev-parse --short HEAD 2>/dev/null || echo "no-submodule")
-            TAG="fpvi-${MAIN_COMMIT}_pycs-${PY_COMPRESS_COMMIT}"
+            # Since git history might not be available in the artifact, use a hardcoded fallback
+            TAG="fpvi-latest"
           fi
           
           echo "Using tag: $TAG"
           echo "$TAG" > .ecr_image_tag
+          cat .ecr_image_tag
 
       - name: Copy deployment script and tag file to baremetal host
         uses: appleboy/scp-action@v0.1.7
@@ -156,9 +164,10 @@ jobs:
           key: ${{ secrets.BAREMETAL_SSH_KEY }}
           port: ${{ secrets.BAREMETAL_PORT }}
           source: |
-            extract_ecr_to_baremetal.sh
-            .ecr_image_tag
+            ./extract_ecr_to_baremetal.sh
+            ./.ecr_image_tag
           target: "~"
+          strip_components: 1
 
       - name: Run deployment script on baremetal host
         uses: appleboy/ssh-action@v1.0.3
