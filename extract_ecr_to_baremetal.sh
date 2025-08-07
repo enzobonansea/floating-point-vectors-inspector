@@ -29,7 +29,7 @@ rm -rf awscliv2.zip aws/
 
 echo "=== Configuring AWS credentials ==="
 if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
-  echo "ERROR: AWS credentials not set. Please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY as environment variables."
+  echo "ERROR: AWS credentials not set. This script is intended for CI/CD use only."
   exit 1
 fi
 export AWS_ACCESS_KEY_ID
