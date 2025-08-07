@@ -17,9 +17,7 @@ jobs:
         with:
           submodules: false
 
-      - name: Configure git for GitLab submodules
-        run: |
-          git config --global url."https://git:${{ secrets.GITLAB_TOKEN }}@gitlab.licar.exp.dc.uba.ar/".insteadOf "https://gitlab.licar.exp.dc.uba.ar/"
+      # Removed global git config for GitLab submodules
 
       - name: Manually update submodules
         env:
