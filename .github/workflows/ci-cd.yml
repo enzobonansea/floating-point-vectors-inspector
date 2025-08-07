@@ -121,19 +121,21 @@ jobs:
         with:
           name: code-and-tag
 
-      - name: Update ECR_IMAGE in extract_ecr_to_baremetal.sh
+      - name: Write ECR image tag to file
         run: |
-          sed -i "s|^ECR_IMAGE=.*|ECR_IMAGE=\"764515255972.dkr.ecr.eu-north-1.amazonaws.com/computer-science/floating-point-vectors-inspector:${{ needs.push-image.outputs.IMAGE_TAG }}\"|" extract_ecr_to_baremetal.sh
+          echo "${{ needs.push-image.outputs.IMAGE_TAG }}" > .ecr_image_tag
 
-      - name: Copy deployment script to baremetal host
+      - name: Copy deployment script and tag file to baremetal host
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.BAREMETAL_HOST }}
           username: ${{ secrets.BAREMETAL_USER }}
           key: ${{ secrets.BAREMETAL_SSH_KEY }}
           port: ${{ secrets.BAREMETAL_PORT }}
-          source: "extract_ecr_to_baremetal.sh"
-          target: "~/extract_ecr_to_baremetal.sh"
+          source: |
+            extract_ecr_to_baremetal.sh
+            .ecr_image_tag
+          target: "~"
 
       - name: Run deployment script on baremetal host
         uses: appleboy/ssh-action@v1.0.3
