@@ -18,6 +18,7 @@ echo "=== Installing Docker and AWS CLI ==="
 sudo apt-get update
 sudo apt-get install -y docker.io curl unzip
 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+rm -rf aws/
 unzip awscliv2.zip
 if command -v aws >/dev/null 2>&1; then
   sudo ./aws/install --update
