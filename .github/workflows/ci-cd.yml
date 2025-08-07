@@ -7,8 +7,10 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-push-ecr:
+  checkout-code:
     runs-on: ubuntu-latest
+    outputs:
+      IMAGE_TAG: ${{ steps.get_tag.outputs.tag }}
     steps:
       - name: Checkout repository (no submodules)
         uses: actions/checkout@v4
@@ -26,6 +28,55 @@ jobs:
           git submodule sync
           git submodule update --init --recursive
 
+      - name: Make scripts executable
+        run: |
+          chmod +x build_and_push_ecr.sh
+          chmod +x extract_ecr_to_baremetal.sh
+
+      - name: Get generated image tag
+        id: get_tag
+        run: |
+          MAIN_COMMIT=$(git rev-parse --short HEAD)
+          PY_COMPRESS_COMMIT=$(git -C py-Compress-Simulator rev-parse --short HEAD 2>/dev/null || echo "no-submodule")
+          IMAGE_TAG="main-${MAIN_COMMIT}_pyc-${PY_COMPRESS_COMMIT}"
+          echo "tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Upload repository and tag artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-and-tag
+          path: |
+            .
+            !./.git
+          retention-days: 1
+
+  build-image:
+    needs: checkout-code
+    runs-on: ubuntu-latest
+    outputs:
+      IMAGE_TAG: ${{ needs.checkout-code.outputs.IMAGE_TAG }}
+    steps:
+      - name: Download code and tag artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: code-and-tag
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        run: |
+          docker build -t floating-point-vectors-inspector:${{ needs.checkout-code.outputs.IMAGE_TAG }} .
+
+  push-image:
+    needs: build-image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download code and tag artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: code-and-tag
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -36,46 +87,26 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: eu-north-1
 
-      - name: Make scripts executable
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Push Docker image to ECR
         run: |
-          chmod +x build_and_push_ecr.sh
-          chmod +x extract_ecr_to_baremetal.sh
+          docker tag floating-point-vectors-inspector:${{ needs.build-image.outputs.IMAGE_TAG }} 764515255972.dkr.ecr.eu-north-1.amazonaws.com/computer-science/floating-point-vectors-inspector:${{ needs.build-image.outputs.IMAGE_TAG }}
+          docker push 764515255972.dkr.ecr.eu-north-1.amazonaws.com/computer-science/floating-point-vectors-inspector:${{ needs.build-image.outputs.IMAGE_TAG }}
 
-      - name: Build and push Docker image to ECR
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        run: |
-          ./build_and_push_ecr.sh
-
-      - name: Get generated image tag
-        id: get_tag
-        run: |
-          MAIN_COMMIT=$(git rev-parse --short HEAD)
-          PY_COMPRESS_COMMIT=$(git -C py-Compress-Simulator rev-parse --short HEAD 2>/dev/null || echo "no-submodule")
-          IMAGE_TAG="main-${MAIN_COMMIT}_pyc-${PY_COMPRESS_COMMIT}"
-          echo "tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
-
-      - name: Upload image tag artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: image-tag
-          path: |
-            ${{ github.workspace }}/
-        # The tag is available as ${{ steps.get_tag.outputs.tag }}
-
-  deploy-to-baremetal:
-    needs: build-and-push-ecr
+  deploy-image:
+    needs: push-image
     runs-on: ubuntu-latest
     steps:
-      - name: Download image tag artifact
+      - name: Download code and tag artifact
         uses: actions/download-artifact@v4
         with:
-          name: image-tag
+          name: code-and-tag
 
       - name: Update ECR_IMAGE in extract_ecr_to_baremetal.sh
         run: |
-          sed -i "s|^ECR_IMAGE=.*|ECR_IMAGE=\"764515255972.dkr.ecr.eu-north-1.amazonaws.com/computer-science/floating-point-vectors-inspector:${{ needs.build-and-push-ecr.outputs.get_tag.outputs.tag }}\"|" extract_ecr_to_baremetal.sh
+          sed -i "s|^ECR_IMAGE=.*|ECR_IMAGE=\"764515255972.dkr.ecr.eu-north-1.amazonaws.com/computer-science/floating-point-vectors-inspector:${{ needs.push-image.outputs.IMAGE_TAG }}\"|" extract_ecr_to_baremetal.sh
 
       - name: Copy deployment script to baremetal host
         uses: appleboy/scp-action@v0.1.7
