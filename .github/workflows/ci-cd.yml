@@ -1,4 +1,3 @@
-
 name: CI/CD Pipeline for Floating Point Vectors Inspector
 
 on:
@@ -11,14 +10,12 @@ jobs:
   build-and-push-ecr:
     runs-on: ubuntu-latest
     steps:
-      - name: Set up GitLab credentials for submodules
-        run: |
-          git config --global url."https://oauth2:${{ secrets.GITLAB_TOKEN }}@gitlab.licar.exp.dc.uba.ar/".insteadOf "https://gitlab.licar.exp.dc.uba.ar/"
-
-      - name: Checkout repository (with submodules)
+      - name: Checkout repository (with submodules, GitLab token)
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          pre-command: |
+            git config --global url."https://oauth2:${{ secrets.GITLAB_TOKEN }}@gitlab.licar.exp.dc.uba.ar/".insteadOf "https://gitlab.licar.exp.dc.uba.ar/"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -62,14 +59,12 @@ jobs:
     needs: build-and-push-ecr
     runs-on: ubuntu-latest
     steps:
-      - name: Set up GitLab credentials for submodules
-        run: |
-          git config --global url."https://oauth2:${{ secrets.GITLAB_TOKEN }}@gitlab.licar.exp.dc.uba.ar/".insteadOf "https://gitlab.licar.exp.dc.uba.ar/"
-
-      - name: Checkout repository (with submodules)
+      - name: Checkout repository (with submodules, GitLab token)
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          pre-command: |
+            git config --global url."https://oauth2:${{ secrets.GITLAB_TOKEN }}@gitlab.licar.exp.dc.uba.ar/".insteadOf "https://gitlab.licar.exp.dc.uba.ar/"
 
       - name: Download image tag artifact
         uses: actions/download-artifact@v4
