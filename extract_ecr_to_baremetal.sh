@@ -22,6 +22,11 @@ unzip awscliv2.zip
 sudo ./aws/install
 rm -rf awscliv2.zip aws/
 
+echo "=== Configuring AWS credentials ==="
+export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}"
+export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY}"
+export AWS_DEFAULT_REGION="eu-north-1"
+
 echo "=== Logging into ECR ==="
 aws ecr get-login-password --region eu-north-1 | sudo docker login --username AWS --password-stdin 764515255972.dkr.ecr.eu-north-1.amazonaws.com
 
