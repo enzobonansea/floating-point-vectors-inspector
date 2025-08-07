@@ -1,10 +1,9 @@
-name: CI/CD Pipeline for Floating Point Vectors Inspector
+name: Build and push to ECR
 
 on:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 jobs:
   checkout-code:
@@ -129,16 +128,12 @@ jobs:
           docker push 764515255972.dkr.ecr.eu-north-1.amazonaws.com/computer-science/floating-point-vectors-inspector:latest
           
           echo "tag=$TAG" >> $GITHUB_OUTPUT
-
-  deploy-image:
+          
+  notify:
     needs: [checkout-code, build-and-push-image]
-    uses: ./.github/workflows/deploy.yml
-    with:
-      tag: ${{ needs.checkout-code.outputs.tag }}
-    secrets:
-      BAREMETAL_HOST: ${{ secrets.BAREMETAL_HOST }}
-      BAREMETAL_USER: ${{ secrets.BAREMETAL_USER }}
-      BAREMETAL_SSH_KEY: ${{ secrets.BAREMETAL_SSH_KEY }}
-      BAREMETAL_PORT: ${{ secrets.BAREMETAL_PORT }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify about deployment
+        run: |
+          echo "::notice::Image built and pushed successfully with tag: ${{ needs.checkout-code.outputs.tag }}"
+          echo "::notice::To deploy to a baremetal host, use the 'Deploy to Baremetal' workflow with this tag."

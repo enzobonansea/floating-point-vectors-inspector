@@ -1,34 +1,17 @@
-name: Reusable Deployment Workflow
+name: Deploy to EC2
 
-# This workflow is hidden from the Actions tab
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
       tag:
-        description: 'The image tag to deploy'
+        description: 'Image tag to deploy (e.g., latest or specific version)'
         required: true
+        default: 'latest'
         type: string
       baremetal_host:
-        description: 'BAREMETAL_HOST IP address (optional, overrides secret)'
+        description: 'Baremetal host IP address (optional, overrides secret)'
         required: false
         type: string
-    outputs:
-      host_reachable:
-        description: 'Whether the baremetal host is reachable'
-        value: ${{ jobs.check-baremetal.outputs.host_reachable }}
-    secrets:
-      BAREMETAL_HOST:
-        required: true
-      BAREMETAL_USER:
-        required: true
-      BAREMETAL_SSH_KEY:
-        required: true
-      BAREMETAL_PORT:
-        required: true
-      AWS_ACCESS_KEY_ID:
-        required: true
-      AWS_SECRET_ACCESS_KEY:
-        required: true
 
 jobs:
   check-baremetal:
@@ -40,9 +23,9 @@ jobs:
       - name: Determine host IP
         id: get_host_ip
         run: |
-          if [ -n "${{ inputs.baremetal_host }}" ]; then
-            echo "Using provided host IP: ${{ inputs.baremetal_host }}"
-            echo "ip=${{ inputs.baremetal_host }}" >> $GITHUB_OUTPUT
+          if [ -n "${{ github.event.inputs.baremetal_host }}" ]; then
+            echo "Using provided host IP: ${{ github.event.inputs.baremetal_host }}"
+            echo "ip=${{ github.event.inputs.baremetal_host }}" >> $GITHUB_OUTPUT
           else
             echo "Using default host IP from secrets: ${{ secrets.BAREMETAL_HOST }}"
             echo "ip=${{ secrets.BAREMETAL_HOST }}" >> $GITHUB_OUTPUT
@@ -73,7 +56,7 @@ jobs:
 
       - name: Patch extract_ecr_to_baremetal.sh with tag
         env:
-          TAG: ${{ inputs.tag }}
+          TAG: ${{ github.event.inputs.tag }}
         run: |
           sed -i 's/^IMAGE_TAG=.*/IMAGE_TAG="'$TAG'"/' extract_ecr_to_baremetal.sh
           chmod +x extract_ecr_to_baremetal.sh
@@ -82,7 +65,7 @@ jobs:
       - name: Copy deployment script to baremetal host
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ inputs.baremetal_host != '' && inputs.baremetal_host || secrets.BAREMETAL_HOST }}
+          host: ${{ needs.check-baremetal.outputs.host_ip }}
           username: ${{ secrets.BAREMETAL_USER }}
           key: ${{ secrets.BAREMETAL_SSH_KEY }}
           port: ${{ secrets.BAREMETAL_PORT }}
@@ -93,7 +76,7 @@ jobs:
       - name: Run deployment script on baremetal host
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ inputs.baremetal_host != '' && inputs.baremetal_host || secrets.BAREMETAL_HOST }}
+          host: ${{ needs.check-baremetal.outputs.host_ip }}
           username: ${{ secrets.BAREMETAL_USER }}
           key: ${{ secrets.BAREMETAL_SSH_KEY }}
           port: ${{ secrets.BAREMETAL_PORT }}
