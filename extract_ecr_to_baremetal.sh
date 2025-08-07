@@ -28,8 +28,17 @@ fi
 rm -rf awscliv2.zip aws/
 
 echo "=== Configuring AWS credentials ==="
-export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}"
-export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY}"
+if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+  if [ -f ".aws_env" ]; then
+    echo "Reading AWS credentials from .aws_env file."
+    source .aws_env
+  else
+    echo "ERROR: AWS credentials not set and .aws_env file not found."
+    exit 1
+  fi
+fi
+export AWS_ACCESS_KEY_ID
+export AWS_SECRET_ACCESS_KEY
 export AWS_DEFAULT_REGION="eu-north-1"
 
 echo "=== Logging into ECR ==="
