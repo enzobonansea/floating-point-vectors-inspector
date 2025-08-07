@@ -3,24 +3,13 @@ name: Deploy Latest Image
 on:
   workflow_dispatch:
     inputs:
-      confirm:
-        description: 'Type "yes" to confirm deployment of latest image'
-        required: true
-        default: 'no'
       baremetal_host:
-        description: 'BAREMETAL_HOST IP address'
-        required: true
+        description: 'BAREMETAL_HOST IP address (optional, overrides secret)'
+        required: false
+        type: string
 
 jobs:
-  validate:
-    runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.confirm == 'yes' }}
-    steps:
-      - name: Validation check
-        run: echo "Deployment of latest image confirmed"
-    
   deploy-latest:
-    needs: validate
     uses: ./.github/workflows/deploy.yml
     with:
       tag: latest
