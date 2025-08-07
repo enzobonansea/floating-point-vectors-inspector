@@ -64,6 +64,13 @@ jobs:
         with:
           name: code-and-tag
 
+      - name: Check image tag
+        run: |
+          if [ -z "${{ needs.checkout-code.outputs.tag }}" ]; then
+            echo "ERROR: Docker image tag is empty. Check previous steps for errors."
+            exit 1
+          fi
+
       - name: Install or Update AWS CLI
         run: |
           curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
