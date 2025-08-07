@@ -57,7 +57,7 @@ jobs:
     needs: checkout-code
     runs-on: ubuntu-latest
     outputs:
-      IMAGE_TAG: ${{ needs.checkout-code.outputs.IMAGE_TAG }}
+      IMAGE_TAG: ${{ needs.checkout-code.outputs.tag }}
     steps:
       - name: Download code and tag artifact
         uses: actions/download-artifact@v4
@@ -83,7 +83,7 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -t floating-point-vectors-inspector:${{ needs.checkout-code.outputs.IMAGE_TAG }} .
+          docker build -t floating-point-vectors-inspector:${{ needs.checkout-code.outputs.tag }} .
 
   push-image:
     needs: build-image
@@ -109,8 +109,8 @@ jobs:
 
       - name: Push Docker image to ECR
         run: |
-          docker tag floating-point-vectors-inspector:${{ needs.checkout-code.outputs.IMAGE_TAG }} 764515255972.dkr.ecr.eu-north-1.amazonaws.com/computer-science/floating-point-vectors-inspector:${{ needs.checkout-code.outputs.IMAGE_TAG }}
-          docker push 764515255972.dkr.ecr.eu-north-1.amazonaws.com/computer-science/floating-point-vectors-inspector:${{ needs.checkout-code.outputs.IMAGE_TAG }}
+          docker tag floating-point-vectors-inspector:${{ needs.checkout-code.outputs.tag }} 764515255972.dkr.ecr.eu-north-1.amazonaws.com/computer-science/floating-point-vectors-inspector:${{ needs.checkout-code.outputs.tag }}
+          docker push 764515255972.dkr.ecr.eu-north-1.amazonaws.com/computer-science/floating-point-vectors-inspector:${{ needs.checkout-code.outputs.tag }}
 
   deploy-image:
     needs: push-image
@@ -123,7 +123,7 @@ jobs:
 
       - name: Write ECR image tag to file
         run: |
-          echo "${{ needs.checkout-code.outputs.IMAGE_TAG }}" > .ecr_image_tag
+          echo "${{ needs.checkout-code.outputs.tag }}" > .ecr_image_tag
 
       - name: Copy deployment script and tag file to baremetal host
         uses: appleboy/scp-action@v0.1.7
