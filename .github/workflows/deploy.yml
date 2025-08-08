@@ -50,6 +50,8 @@ jobs:
     needs: check-baremetal
     if: needs.check-baremetal.outputs.host_reachable == 'true'
     runs-on: ubuntu-latest
+    env:
+      HOST_IP: ${{ github.event.inputs.baremetal_host != '' && github.event.inputs.baremetal_host || secrets.BAREMETAL_HOST }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -59,10 +61,15 @@ jobs:
           chmod +x extract_ecr_to_baremetal.sh
           ls -la extract_ecr_to_baremetal.sh
 
+      - name: Debug resolved host
+        run: |
+          echo "HOST_IP='${HOST_IP}'"
+          test -n "${HOST_IP}" || { echo "::error::HOST_IP is empty"; exit 1; }
+
       - name: Copy deployment script to baremetal host
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ needs.check-baremetal.outputs.host_ip }}
+          host: ${{ env.HOST_IP }}
           username: ${{ secrets.BAREMETAL_USER }}
           key: ${{ secrets.BAREMETAL_SSH_KEY }}
           port: ${{ secrets.BAREMETAL_PORT }}
@@ -73,7 +80,7 @@ jobs:
       - name: Run deployment script on baremetal host
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ needs.check-baremetal.outputs.host_ip }}
+          host: ${{ env.HOST_IP }}
           username: ${{ secrets.BAREMETAL_USER }}
           key: ${{ secrets.BAREMETAL_SSH_KEY }}
           port: ${{ secrets.BAREMETAL_PORT }}
