@@ -42,7 +42,22 @@ jobs:
           PY_COMPRESS_COMMIT=$(git -C py-Compress-Simulator rev-parse --short HEAD 2>/dev/null || echo "no-submodule")
           IMAGE_TAG="fpvi-${MAIN_COMMIT}_pycs-${PY_COMPRESS_COMMIT}"
           echo "tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "main_commit=$MAIN_COMMIT" >> $GITHUB_OUTPUT
+          echo "py_compress_commit=$PY_COMPRESS_COMMIT" >> $GITHUB_OUTPUT
           echo "Image tag: $IMAGE_TAG"
+          
+      - name: Update menu.sh with commit information
+        run: |
+          MAIN_COMMIT=$(git rev-parse --short HEAD)
+          PY_COMPRESS_COMMIT=$(git -C py-Compress-Simulator rev-parse --short HEAD 2>/dev/null || echo "no-submodule")
+          
+          # Update the placeholders in menu.sh with actual commit values
+          sed -i "s/MAIN_COMMIT_PLACEHOLDER/$MAIN_COMMIT/g" menu.sh
+          sed -i "s/PY_COMPRESS_COMMIT_PLACEHOLDER/$PY_COMPRESS_COMMIT/g" menu.sh
+          
+          # Show the updated file for verification
+          echo "Updated menu.sh:"
+          cat menu.sh
           
       - name: Debug output
         run: |
