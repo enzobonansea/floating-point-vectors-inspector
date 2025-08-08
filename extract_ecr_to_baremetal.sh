@@ -60,11 +60,15 @@ echo "=== Cleaning up container ==="
 sudo docker rm $CONTAINER_ID
 
 echo "=== Setting up chroot environment ==="
-# Mount essential filesystems for chroot
-sudo mount --bind /dev /opt/hpc-app/dev
-sudo mount --bind /proc /opt/hpc-app/proc
-sudo mount --bind /sys /opt/hpc-app/sys
-sudo mount --bind /tmp /opt/hpc-app/tmp
+# Mount essential filesystems for chroot (more robust)
+sudo mkdir -p /opt/hpc-app/{dev,proc,sys,tmp}
+sudo mount --rbind /dev /opt/hpc-app/dev
+sudo mount --make-rslave /opt/hpc-app/dev || true
+sudo mount -t proc proc /opt/hpc-app/proc
+sudo mount --rbind /sys /opt/hpc-app/sys
+sudo mount --make-rslave /opt/hpc-app/sys || true
+sudo mount --rbind /tmp /opt/hpc-app/tmp
+sudo mount --make-rslave /opt/hpc-app/tmp || true
 
 echo "=== Creating workspace directory ==="
 sudo mkdir -p /opt/hpc-app/workspace
@@ -93,9 +97,30 @@ echo "=== Creating host entry script ==="
 cat << 'EOF' | sudo tee /usr/local/bin/enter-hpc
 #!/bin/bash
 # Enter the HPC environment from host
+set -e
 
 echo "Entering HPC Analysis Environment..."
-sudo chroot /opt/hpc-app /enter_hpc.sh
+
+# Ensure chroot mounts are present (idempotent)
+SUDO=""
+if command -v sudo >/dev/null 2>&1; then SUDO="sudo"; fi
+
+$SUDO mkdir -p /opt/hpc-app/{dev,proc,sys,tmp}
+
+for d in dev sys tmp; do
+  if ! mountpoint -q "/opt/hpc-app/$d"; then
+    echo "Mounting /$d into chroot..."
+    $SUDO mount --rbind "/$d" "/opt/hpc-app/$d"
+    $SUDO mount --make-rslave "/opt/hpc-app/$d" || true
+  fi
+done
+
+if ! mountpoint -q "/opt/hpc-app/proc"; then
+  echo "Mounting procfs into chroot..."
+  $SUDO mount -t proc proc "/opt/hpc-app/proc"
+fi
+
+$SUDO chroot /opt/hpc-app /enter_hpc.sh
 EOF
 
 sudo chmod +x /usr/local/bin/enter-hpc
