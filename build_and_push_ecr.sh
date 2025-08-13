@@ -15,7 +15,7 @@ MAIN_COMMIT=$(git rev-parse --short HEAD)
 PY_COMPRESS_COMMIT=$(git -C py-Compress-Simulator rev-parse --short HEAD 2>/dev/null || echo "no-submodule")
 
 IMAGE_TAG="main-${MAIN_COMMIT}_pyc-${PY_COMPRESS_COMMIT}"
-ECR_REPO_URI="764515255972.dkr.ecr.us-east-1.amazonaws.com/computer-science/floating-point-vectors-inspector"
+ECR_REPO_URI="764515255972.dkr.ecr.eu-north-1.amazonaws.com/computer-science/floating-point-vectors-inspector"
 ECR_URL="$ECR_REPO_URI:$IMAGE_TAG"
 
 
@@ -23,7 +23,7 @@ ECR_URL="$ECR_REPO_URI:$IMAGE_TAG"
 echo "Using image tag: $IMAGE_TAG"
 
 echo "Logging in to Amazon ECR..."
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 764515255972.dkr.ecr.us-east-1.amazonaws.com
+aws ecr get-login-password --region eu-north-1 | docker login --username AWS --password-stdin 764515255972.dkr.ecr.eu-north-1.amazonaws.com
 
 
 

@@ -13,7 +13,7 @@ else
   echo "No IMAGE_TAG provided and .ecr_image_tag file not found, using 'latest' tag."
   IMAGE_TAG="latest"
 fi
-ECR_IMAGE="764515255972.dkr.ecr.us-east-1.amazonaws.com/computer-science/floating-point-vectors-inspector:${IMAGE_TAG}"
+ECR_IMAGE="764515255972.dkr.ecr.eu-north-1.amazonaws.com/computer-science/floating-point-vectors-inspector:${IMAGE_TAG}"
 
 echo "=== Installing Docker and AWS CLI ==="
 sudo apt-get update
@@ -41,10 +41,10 @@ fi
 # Explicitly export the credentials again to ensure they're available
 export AWS_ACCESS_KEY_ID
 export AWS_SECRET_ACCESS_KEY
-export AWS_DEFAULT_REGION="us-east-1"
+export AWS_DEFAULT_REGION="eu-north-1"
 
 echo "=== Logging into ECR ==="
-aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin 764515255972.dkr.ecr.us-east-1.amazonaws.com
+aws ecr get-login-password --region eu-north-1 | sudo docker login --username AWS --password-stdin 764515255972.dkr.ecr.eu-north-1.amazonaws.com
 
 echo "=== Pulling your image ==="
 sudo docker pull $ECR_IMAGE
