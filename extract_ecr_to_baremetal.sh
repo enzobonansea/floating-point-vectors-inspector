@@ -67,7 +67,8 @@ sudo mount --make-rslave /opt/hpc-app/dev || true
 sudo mount -t proc proc /opt/hpc-app/proc
 sudo mount --rbind /sys /opt/hpc-app/sys
 sudo mount --make-rslave /opt/hpc-app/sys || true
-sudo mount --rbind /tmp /opt/hpc-app/tmp
+sudo mkdir -p /opt/hpc-app/tmp
+sudo mount --rbind /var/tmp /opt/hpc-app/tmp
 sudo mount --make-rslave /opt/hpc-app/tmp || true
 
 echo "=== Creating workspace directory ==="
