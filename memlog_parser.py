@@ -17,9 +17,10 @@ from __future__ import annotations
 import bisect
 import os
 import re
+import tempfile
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional, TextIO
 from tqdm import tqdm
 
 # ---------------- Expresiones regulares ----------------
@@ -34,12 +35,13 @@ class LiveAlloc:
         "start",
         "size",
         "end",
-        "store_file",
         "store_count",
         "aligned32",
         "aligned64",
         "base_core",
         "store_path",
+        "temp_file_offset",  # Offset in shared temp file
+        "temp_file_size",    # Size written to temp file
     )
 
     def __init__(self, start: int, size: int, base_core: str, out_dir: Path):
@@ -50,27 +52,33 @@ class LiveAlloc:
         self.aligned64 = True
         self.base_core = base_core
         self.store_count = 0
-        # Use a temp file for stores
         self.store_path = out_dir / f".{base_core}.tmp"
-        self.store_file = self.store_path.open("w", encoding="utf-8")
+        self.temp_file_offset = -1  # Will be set when first store written
+        self.temp_file_size = 0
 
-    def write_store(self, addr_hex: str, value_hex: str) -> None:
+    def write_store(self, addr_hex: str, value_hex: str, temp_file: TextIO) -> None:
         addr = int(addr_hex, 16)
         offset = addr - self.start
-        self.store_file.write(f"0x{addr_hex.lower()} 0x{value_hex.lower()} {offset}\n")
+        
+        # Track position if first write
+        if self.temp_file_offset == -1:
+            self.temp_file_offset = temp_file.tell()
+        
+        line = f"0x{addr_hex.lower()} 0x{value_hex.lower()} {offset}\n"
+        temp_file.write(line)
+        self.temp_file_size += len(line.encode('utf-8'))
         self.store_count += 1
+        
         if self.aligned32 and offset % 4 != 0:
             self.aligned32 = False
         if self.aligned64 and offset % 8 != 0:
             self.aligned64 = False
 
-    def close_and_finalize(self, out_dir: Path) -> None:
-        self.store_file.close()
+    def close_and_finalize(self, out_dir: Path, temp_file_path: Path) -> None:
         if self.store_count == 0:
-            # No STOREs ⇒ remove temp file
-            if self.store_path.exists():
-                self.store_path.unlink()
+            # No STOREs ⇒ no file needed
             return
+        
         suffix = "_distVar"
         if self.aligned32:
             suffix = "_dist64" if self.aligned64 else "_dist32"
@@ -81,8 +89,21 @@ class LiveAlloc:
             while (out_dir / f"{new_name}.{i}").exists():
                 i += 1
             target = out_dir / f"{new_name}.{i}"
-        # Rename temp file to final name
-        self.store_path.rename(target)
+        
+        # Copy data from shared temp file to individual file
+        with open(temp_file_path, "rb") as src:
+            src.seek(self.temp_file_offset)
+            with open(target, "wb") as dst:
+                # Copy in chunks to handle large data
+                remaining = self.temp_file_size
+                chunk_size = 8192
+                while remaining > 0:
+                    to_read = min(chunk_size, remaining)
+                    data = src.read(to_read)
+                    if not data:
+                        break
+                    dst.write(data)
+                    remaining -= len(data)
 
 # -------------------------------------------------------
 
@@ -111,8 +132,13 @@ def parse_log(log_path: str | os.PathLike) -> Path:
         live_list.pop(idx)
         live_allocs[alloc.start].pop()
 
+    # Create a single shared temporary file for all stores
+    temp_file_path = out_dir / ".shared_temp_stores.tmp"
+    
     file_size = log_path.stat().st_size
-    with tqdm(total=file_size, desc="Parsing log", unit="B", unit_scale=True) as pbar, log_path.open("r", encoding="utf-8", errors="ignore") as fh:
+    with tqdm(total=file_size, desc="Parsing log", unit="B", unit_scale=True) as pbar, \
+         log_path.open("r", encoding="utf-8", errors="ignore") as fh, \
+         temp_file_path.open("w", encoding="utf-8") as temp_file:
 
         inside_alloc = inside_free = False
 
@@ -128,7 +154,7 @@ def parse_log(log_path: str | os.PathLike) -> Path:
                 if pos >= 0:
                     alloc = live_list[pos]
                     if addr_int <= alloc.end:
-                        alloc.write_store(addr_hex, value_hex)
+                        alloc.write_store(addr_hex, value_hex, temp_file)
                 continue
 
             # ALLOC / FREE delimiters -----------------------------------
@@ -139,7 +165,9 @@ def parse_log(log_path: str | os.PathLike) -> Path:
             if line.startswith("===FREE START==="):
                 inside_free = True; continue
             if line.startswith("===FREE END==="):
-                inside_free = False; continue            # ALLOC header ----------------------------------------------
+                inside_free = False; continue
+            
+            # ALLOC header ----------------------------------------------
             if inside_alloc:
                 m_alloc = ALLOC_HEADER_RE.match(line)
                 if m_alloc:
@@ -159,14 +187,18 @@ def parse_log(log_path: str | os.PathLike) -> Path:
                     stack = live_allocs.get(start_int)
                     if stack:
                         alloc = stack[-1]
-                        alloc.close_and_finalize(out_dir)
+                        alloc.close_and_finalize(out_dir, temp_file_path)
                         _remove(alloc)
                 continue
 
     # Finaliza los allocs vivos sin FREE
     for alloc in list(live_list):
-        alloc.close_and_finalize(out_dir)
+        alloc.close_and_finalize(out_dir, temp_file_path)
         _remove(alloc)
+    
+    # Clean up the shared temp file
+    if temp_file_path.exists():
+        temp_file_path.unlink()
 
     print(f"[parse_log] Terminado. Ficheros en: {out_dir}")
     return out_dir
