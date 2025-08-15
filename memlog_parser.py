@@ -34,37 +34,43 @@ class LiveAlloc:
         "start",
         "size",
         "end",
-        "stores",
+        "store_file",
+        "store_count",
         "aligned32",
         "aligned64",
         "base_core",
+        "store_path",
     )
 
-    def __init__(self, start: int, size: int, base_core: str):
+    def __init__(self, start: int, size: int, base_core: str, out_dir: Path):
         self.start = start
         self.size = size
         self.end = start + size
-        self.stores = []  # List of (addr_hex, value_hex, offset) tuples
         self.aligned32 = True
         self.aligned64 = True
         self.base_core = base_core
+        self.store_count = 0
+        # Use a temp file for stores
+        self.store_path = out_dir / f".{base_core}.tmp"
+        self.store_file = self.store_path.open("w", encoding="utf-8")
 
-    # ------------------------------------------------------------------
     def write_store(self, addr_hex: str, value_hex: str) -> None:
         addr = int(addr_hex, 16)
         offset = addr - self.start
-        self.stores.append((addr_hex.lower(), value_hex.lower(), offset))
+        self.store_file.write(f"0x{addr_hex.lower()} 0x{value_hex.lower()} {offset}\n")
+        self.store_count += 1
         if self.aligned32 and offset % 4 != 0:
             self.aligned32 = False
         if self.aligned64 and offset % 8 != 0:
             self.aligned64 = False
 
-    # ------------------------------------------------------------------
     def close_and_finalize(self, out_dir: Path) -> None:
-        if not self.stores:
-            # Ninguna STORE ⇒ no crear archivo
+        self.store_file.close()
+        if self.store_count == 0:
+            # No STOREs ⇒ remove temp file
+            if self.store_path.exists():
+                self.store_path.unlink()
             return
-        
         suffix = "_distVar"
         if self.aligned32:
             suffix = "_dist64" if self.aligned64 else "_dist32"
@@ -75,11 +81,8 @@ class LiveAlloc:
             while (out_dir / f"{new_name}.{i}").exists():
                 i += 1
             target = out_dir / f"{new_name}.{i}"
-        
-        # Write all stores to the final file
-        with target.open("w", encoding="utf-8") as fh:
-            for addr_hex, value_hex, offset in self.stores:
-                fh.write(f"0x{addr_hex} 0x{value_hex} {offset}\n")
+        # Rename temp file to final name
+        self.store_path.rename(target)
 
 # -------------------------------------------------------
 
@@ -144,7 +147,7 @@ def parse_log(log_path: str | os.PathLike) -> Path:
                     start_int = int(start_hex, 16)
                     size_int = int(size_str)
                     base_core = f"0x{start_hex.lower()}_{size_int}"
-                    _add(LiveAlloc(start_int, size_int, base_core))
+                    _add(LiveAlloc(start_int, size_int, base_core, out_dir))
                 continue
 
             # FREE header -----------------------------------------------
