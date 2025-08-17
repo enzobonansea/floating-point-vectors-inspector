@@ -15,4 +15,4 @@ docker save -o "$TAR_PATH" ${IMAGE_NAME}:${IMAGE_TAG}
 echo "[3/3] Loading image back from $TAR_PATH ..."
 docker load -i "$TAR_PATH"
 
-echo "✅ Done. Image '${IMAGE_NAME}:${IMAGE_TAG}' is available."
+echo "✅ Done. Image '${IMAGE_NAME}:${IMAGE_TAG}' is available. Run with: docker run -it --rm fpvi:latest"
