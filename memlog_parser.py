@@ -22,6 +22,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, TextIO
 from tqdm import tqdm
+from multiprocessing import Pool, cpu_count
+from functools import partial
 
 # ---------------- Expresiones regulares ----------------
 ALLOC_HEADER_RE = re.compile(r"^Start\s+0x([0-9a-fA-F]+),\s+size\s+(\d+)")
@@ -307,6 +309,34 @@ def process_compression(parsed_dir: str | os.PathLike) -> Path:
         
 
 
+# Helper function for parallel compression
+def compress_file(file: Path) -> tuple:
+    """Compress a single file and return result tuple."""
+    import subprocess
+    import sys
+    
+    filename = file.name
+    # Skip _distVar files (with or without .N suffix) as they are not compressible
+    if '_distVar' in filename:
+        return (file, False, f"Variable alignment files are not compressible")
+    
+    # Only compress _dist32 and _dist64 files (with or without .N suffix)
+    if '_dist32' in filename or '_dist64' in filename:
+        compression_output_file = f"{file}.compression"
+        try:
+            # Run subprocess with output file argument
+            subprocess.run(
+                ["/usr/mmu_compressor", str(file), "--output-file", compression_output_file],
+                check=True  # Raise CalledProcessError on non-zero exit
+            )
+            return (file, True, None)
+        except subprocess.CalledProcessError as e:
+            return (file, False, f"Process exited with code {e.returncode}")
+        except Exception as e:
+            return (file, False, str(e))
+    
+    return (file, False, "Not a compressible file type")
+
 # -------------------------------------------------------
 if __name__ == "__main__":
     import argparse, subprocess, sys
@@ -334,31 +364,27 @@ if __name__ == "__main__":
             sys.exit(0)
 
         out_dir = parse_log(args.logfile)
-        # Compress each parsed file
+        # Compress each parsed file in parallel
         if args.compress:
-            for file in out_dir.iterdir():
-                if file.is_file():
-                    filename = file.name
-                    # Skip _distVar files (with or without .N suffix) as they are not compressible
-                    if '_distVar' in filename:
-                        print(f"[compress_skip] {file}: Variable alignment files are not compressible", file=sys.stderr)
-                        continue
-                    
-                    # Only compress _dist32 and _dist64 files (with or without .N suffix)
-                    if '_dist32' in filename or '_dist64' in filename:
-                        compression_output_file = f"{file}.compression"
-                        try:
-                            # Run subprocess with output file argument
-                            subprocess.run(
-                                ["/usr/mmu_compressor", str(file), "--output-file", compression_output_file],
-                                check=True  # Raise CalledProcessError on non-zero exit
-                            )
-                        except subprocess.CalledProcessError as e:
-                            print(f"[compress_error] {file}: Process exited with code {e.returncode}", file=sys.stderr)
-                            raise
-                        except Exception as e:
-                            print(f"[compress_error] {file}: {e}", file=sys.stderr)
-                            raise
+            # Collect all files to process
+            files_to_compress = [f for f in out_dir.iterdir() if f.is_file()]
+            
+            if files_to_compress:
+                # Use all but one physical cores for parallel processing
+                num_workers = max(1, cpu_count() - 1)
+                print(f"[compress] Processing {len(files_to_compress)} files using {num_workers} workers")
+                
+                # Process files in parallel
+                with Pool(processes=num_workers) as pool:
+                    results = pool.map(compress_file, files_to_compress)
+                
+                # Report results
+                for file, success, error_msg in results:
+                    if not success:
+                        if '_distVar' in file.name:
+                            print(f"[compress_skip] {file}: {error_msg}", file=sys.stderr)
+                        elif error_msg and error_msg != "Not a compressible file type":
+                            print(f"[compress_error] {file}: {error_msg}", file=sys.stderr)
     # Process compression after all subprocesses complete
     process_compression(out_dir)
     sys.exit(0)
