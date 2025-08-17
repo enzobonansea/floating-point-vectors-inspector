@@ -32,8 +32,8 @@ jobs:
 
       - name: Make scripts executable
         run: |
-          chmod +x build_and_push_ecr.sh
-          chmod +x extract_ecr_to_baremetal.sh
+          chmod +x aws/build_and_push_ecr.sh
+          chmod +x aws/extract_ecr_to_ec2.sh
 
       - name: Get generated image tag
         id: get_tag
