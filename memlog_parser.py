@@ -338,19 +338,27 @@ if __name__ == "__main__":
         if args.compress:
             for file in out_dir.iterdir():
                 if file.is_file():
-                    compression_output_file = f"{file}.compression"
-                    try:
-                        # Run subprocess with output file argument
-                        subprocess.run(
-                            ["/usr/mmu_compressor", str(file), "--output-file", compression_output_file],
-                            check=True  # Raise CalledProcessError on non-zero exit
-                        )
-                    except subprocess.CalledProcessError as e:
-                        print(f"[compress_error] {file}: Process exited with code {e.returncode}", file=sys.stderr)
-                        raise
-                    except Exception as e:
-                        print(f"[compress_error] {file}: {e}", file=sys.stderr)
-                        raise
+                    filename = file.name
+                    # Skip _distVar files (with or without .N suffix) as they are not compressible
+                    if '_distVar' in filename:
+                        print(f"[compress_skip] {file}: Variable alignment files are not compressible", file=sys.stderr)
+                        continue
+                    
+                    # Only compress _dist32 and _dist64 files (with or without .N suffix)
+                    if '_dist32' in filename or '_dist64' in filename:
+                        compression_output_file = f"{file}.compression"
+                        try:
+                            # Run subprocess with output file argument
+                            subprocess.run(
+                                ["/usr/mmu_compressor", str(file), "--output-file", compression_output_file],
+                                check=True  # Raise CalledProcessError on non-zero exit
+                            )
+                        except subprocess.CalledProcessError as e:
+                            print(f"[compress_error] {file}: Process exited with code {e.returncode}", file=sys.stderr)
+                            raise
+                        except Exception as e:
+                            print(f"[compress_error] {file}: {e}", file=sys.stderr)
+                            raise
     # Process compression after all subprocesses complete
     process_compression(out_dir)
     sys.exit(0)
