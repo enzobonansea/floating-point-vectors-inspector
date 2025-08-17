@@ -338,10 +338,19 @@ if __name__ == "__main__":
         if args.compress:
             for file in out_dir.iterdir():
                 if file.is_file():
-                    with open(f"{file}.compression", "w", encoding="utf-8") as fh:
-                        try:
-                            subprocess.run(["/usr/mmu_compressor", str(file)], stdout=fh, stderr=subprocess.DEVNULL)
-                        except Exception as e:
-                            print(f"[compress_error] {{file}}: {{e}}", file=sys.stderr)
+                    compression_output_file = f"{file}.compression"
+                    try:
+                        # Run subprocess with output file argument
+                        subprocess.run(
+                            ["/usr/mmu_compressor", str(file), "--output-file", compression_output_file],
+                            check=True  # Raise CalledProcessError on non-zero exit
+                        )
+                    except subprocess.CalledProcessError as e:
+                        print(f"[compress_error] {file}: Process exited with code {e.returncode}", file=sys.stderr)
+                        raise
+                    except Exception as e:
+                        print(f"[compress_error] {file}: {e}", file=sys.stderr)
+                        raise
+    # Process compression after all subprocesses complete
     process_compression(out_dir)
     sys.exit(0)
