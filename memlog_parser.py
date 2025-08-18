@@ -488,8 +488,11 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
                 if current_time - last_log_time > 300:
                     mem_percent = get_memory_percent()
                     elapsed_hours = (current_time - start_time) / 3600
+                    success_count = len(results)
+                    failure_count = len(failed_files)
                     with open(status_log, "a") as log:
                         log.write(f"[compress] Progress: {len(completed)}/{expected_count} completed, "
+                                f"Success: {success_count}, Failures: {failure_count}, "
                                 f"Elapsed: {elapsed_hours:.1f}h, Memory: {mem_percent:.1f}%\n")
                         if newly_completed:
                             log.write(f"[compress] Recently completed: {len(newly_completed)} files\n")
