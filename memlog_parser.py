@@ -414,7 +414,9 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
     Returns list of (file, success, error_msg) tuples.
     """
     if num_workers is None:
-        num_workers = max(1, cpu_count() - 1)
+        # Default to fewer workers for long-running processes
+        # Each compression can take 20+ hours and use significant RAM
+        num_workers = min(2, max(1, cpu_count() // 4))
     
     results = []
     failed_files = []
@@ -427,6 +429,10 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
     status_log = Path("/tmp/memlog_parser_status.log")
     with open(status_log, "a") as log:
         log.write(f"[compress] Starting compression of {len(files_to_compress)} files with {num_workers} workers\n")
+        log.write(f"[compress] Initial memory usage: {get_memory_percent():.1f}%\n")
+    
+    processed_count = 0
+    expected_count = len(files_to_compress)
     
     try:
         # Use spawn context for better memory isolation
@@ -436,28 +442,77 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
         chunk_size = max(1, len(files_to_compress) // (num_workers * 4))
         
         with ctx.Pool(processes=num_workers, maxtasksperchild=10) as pool:
-            # Use imap_unordered for better memory efficiency and immediate results
-            for idx, result in enumerate(pool.imap_unordered(compress_file, files_to_compress, chunksize=chunk_size)):
-                if result[1]:  # Success
-                    results.append(result)
-                else:
-                    failed_files.append((result[0], 0))  # Track with retry count
+            # Use apply_async with timeout for better control
+            async_results = []
+            for file in files_to_compress:
+                async_results.append((file, pool.apply_async(compress_file, (file,))))
+            
+            # Monitor results without blocking timeout
+            pool.close()  # Stop accepting new tasks
+            
+            # Monitor completion with periodic checks
+            completed = []
+            start_time = time.time()
+            last_log_time = start_time
+            
+            while len(completed) < len(async_results):
+                time.sleep(30)  # Check every 30 seconds
+                current_time = time.time()
                 
-                # Print progress
-                if (idx + 1) % 100 == 0:
-                    print(f"[compress] Processed {idx + 1}/{len(files_to_compress)} files")
-                    
-                # Check memory usage periodically
-                if (idx + 1) % 50 == 0:
+                # Check which tasks are done
+                newly_completed = []
+                for idx, (file, async_result) in enumerate(async_results):
+                    if idx not in completed:
+                        if async_result.ready():
+                            try:
+                                result = async_result.get(timeout=1)  # Should be immediate since it's ready
+                                if result[1]:  # Success
+                                    results.append(result)
+                                else:
+                                    failed_files.append((result[0], 0))
+                                newly_completed.append(idx)
+                                processed_count += 1
+                            except Exception as e:
+                                # Worker was killed
+                                error_msg = f"Worker killed: {str(e)}"
+                                print(f"[compress] {error_msg} for {file}")
+                                with open(status_log, "a") as log:
+                                    log.write(f"[compress] WORKER KILLED: {file} - {error_msg}\n")
+                                failed_files.append((file, 0))
+                                newly_completed.append(idx)
+                                processed_count += 1
+                
+                completed.extend(newly_completed)
+                
+                # Log progress every 5 minutes
+                if current_time - last_log_time > 300:
                     mem_percent = get_memory_percent()
-                    if mem_percent > 90:
-                        print(f"[compress] Memory usage high ({mem_percent:.1f}%), waiting...")
-                        time.sleep(2)
+                    elapsed_hours = (current_time - start_time) / 3600
+                    with open(status_log, "a") as log:
+                        log.write(f"[compress] Progress: {len(completed)}/{expected_count} completed, "
+                                f"Elapsed: {elapsed_hours:.1f}h, Memory: {mem_percent:.1f}%\n")
+                        if newly_completed:
+                            log.write(f"[compress] Recently completed: {len(newly_completed)} files\n")
+                    last_log_time = current_time
+                    
+                    # Check for high memory
+                    if mem_percent > 95:
+                        print(f"[compress] CRITICAL: Memory at {mem_percent:.1f}%!")
+                        with open(status_log, "a") as log:
+                            log.write(f"[compress] CRITICAL MEMORY: {mem_percent:.1f}%\n")
+            
+            pool.join()  # Wait for all workers to finish
     
     except Exception as e:
-        print(f"[compress] Pool processing failed: {e}. Falling back to sequential processing.")
+        error_msg = f"Pool processing failed: {e}"
+        print(f"[compress] {error_msg}. Falling back to sequential processing.")
+        with open(status_log, "a") as log:
+            log.write(f"[compress] POOL FAILURE: {error_msg}\n")
+            log.write(f"[compress] Processed {processed_count} out of {expected_count} files before failure\n")
+        
         # Add all unprocessed files to failed list
         processed_files = {r[0] for r in results}
+        processed_files.update({f for f, _ in failed_files})
         for f in files_to_compress:
             if f not in processed_files:
                 failed_files.append((f, 0))
@@ -507,6 +562,8 @@ if __name__ == "__main__":
     parser.add_argument("logfile", nargs='?', help="Ruta al fichero .log a procesar")
     parser.add_argument("--compress", default=True, action='store_true', help="Compress parsed files (default: True)")
     parser.add_argument("--parsed-dir", default=None, help="Path to an existing parsed directory to process (skips parsing)")
+    parser.add_argument("--workers", type=int, default=None, help="Number of parallel workers (default: auto)")
+    parser.add_argument("--sequential", action='store_true', help="Force sequential processing (no parallelism)")
     args = parser.parse_args()
     
     if args.parsed_dir:
@@ -532,8 +589,22 @@ if __name__ == "__main__":
             files_to_compress = [f for f in out_dir.iterdir() if f.is_file()]
             
             if files_to_compress:
-                # Use robust compression with automatic retry and memory management
-                results = robust_parallel_compress(files_to_compress)
+                # Check if sequential processing is requested
+                if args.sequential:
+                    print(f"[compress] Sequential processing of {len(files_to_compress)} files")
+                    results = []
+                    for idx, file in enumerate(files_to_compress):
+                        if (idx + 1) % 10 == 0:
+                            print(f"[compress] Progress: {idx + 1}/{len(files_to_compress)}")
+                        try:
+                            result = compress_file(file)
+                            results.append(result)
+                        except Exception as e:
+                            results.append((file, False, str(e)))
+                else:
+                    # Use robust compression with automatic retry and memory management
+                    num_workers = args.workers if args.workers else None
+                    results = robust_parallel_compress(files_to_compress, num_workers=num_workers)
                 
                 # Report results
                 critical_failures = []
