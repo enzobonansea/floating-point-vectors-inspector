@@ -22,12 +22,35 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, TextIO
 from tqdm import tqdm
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool, cpu_count, get_context
 from functools import partial
+import signal
+import time
 
 # ---------------- Expresiones regulares ----------------
 ALLOC_HEADER_RE = re.compile(r"^Start\s+0x([0-9a-fA-F]+),\s+size\s+(\d+)")
 STORE_RE = re.compile(r"^0x([0-9a-fA-F]+)\s+0x([0-9a-fA-F]+)")
+
+# ---------------- Memory monitoring without psutil ----------------
+def get_memory_percent():
+    """Get memory usage percentage from /proc/meminfo (Linux only)"""
+    try:
+        with open('/proc/meminfo', 'r') as f:
+            lines = f.readlines()
+            total = 0
+            available = 0
+            for line in lines:
+                if line.startswith('MemTotal:'):
+                    total = int(line.split()[1])
+                elif line.startswith('MemAvailable:'):
+                    available = int(line.split()[1])
+                    break
+            if total > 0:
+                used_percent = 100 * (1 - available / total)
+                return used_percent
+    except:
+        pass
+    return 0  # Return 0 if we can't determine memory usage
 
 # -------------------------------------------------------
 
@@ -202,6 +225,11 @@ def parse_log(log_path: str | os.PathLike) -> Path:
     if temp_file_path.exists():
         temp_file_path.unlink()
 
+    # Write status to a log file that persists outside SPEC's redirection
+    status_log = Path("/tmp/memlog_parser_status.log")
+    with open(status_log, "a") as log:
+        log.write(f"[{log_path.name}] Parsing completed. Files in: {out_dir}\n")
+    
     print(f"[parse_log] Terminado. Ficheros en: {out_dir}")
     return out_dir
 
@@ -380,6 +408,97 @@ def compress_file(file: Path) -> tuple:
     
     return (file, False, "Not a compressible file type")
 
+def robust_parallel_compress(files_to_compress, num_workers=None):
+    """
+    Robustly compress files in parallel with retry logic and memory management.
+    Returns list of (file, success, error_msg) tuples.
+    """
+    if num_workers is None:
+        num_workers = max(1, cpu_count() - 1)
+    
+    results = []
+    failed_files = []
+    max_retries = 3
+    
+    # First attempt with multiprocessing pool
+    print(f"[compress] Processing {len(files_to_compress)} files using {num_workers} workers")
+    
+    # Also log to external file
+    status_log = Path("/tmp/memlog_parser_status.log")
+    with open(status_log, "a") as log:
+        log.write(f"[compress] Starting compression of {len(files_to_compress)} files with {num_workers} workers\n")
+    
+    try:
+        # Use spawn context for better memory isolation
+        ctx = get_context('spawn')
+        
+        # Process in smaller chunks to avoid overwhelming memory
+        chunk_size = max(1, len(files_to_compress) // (num_workers * 4))
+        
+        with ctx.Pool(processes=num_workers, maxtasksperchild=10) as pool:
+            # Use imap_unordered for better memory efficiency and immediate results
+            for idx, result in enumerate(pool.imap_unordered(compress_file, files_to_compress, chunksize=chunk_size)):
+                if result[1]:  # Success
+                    results.append(result)
+                else:
+                    failed_files.append((result[0], 0))  # Track with retry count
+                
+                # Print progress
+                if (idx + 1) % 100 == 0:
+                    print(f"[compress] Processed {idx + 1}/{len(files_to_compress)} files")
+                    
+                # Check memory usage periodically
+                if (idx + 1) % 50 == 0:
+                    mem_percent = get_memory_percent()
+                    if mem_percent > 90:
+                        print(f"[compress] Memory usage high ({mem_percent:.1f}%), waiting...")
+                        time.sleep(2)
+    
+    except Exception as e:
+        print(f"[compress] Pool processing failed: {e}. Falling back to sequential processing.")
+        # Add all unprocessed files to failed list
+        processed_files = {r[0] for r in results}
+        for f in files_to_compress:
+            if f not in processed_files:
+                failed_files.append((f, 0))
+    
+    # Retry failed files with reduced parallelism or sequentially
+    while failed_files and any(retry_count < max_retries for _, retry_count in failed_files):
+        print(f"[compress] Retrying {len(failed_files)} failed files...")
+        new_failed = []
+        
+        for file, retry_count in failed_files:
+            if retry_count >= max_retries:
+                # Max retries reached, mark as permanently failed
+                results.append((file, False, f"Failed after {max_retries} retries"))
+                continue
+            
+            # Check memory before attempting
+            mem_percent = get_memory_percent()
+            if mem_percent > 85:
+                print(f"[compress] Memory at {mem_percent:.1f}%, waiting before retry...")
+                time.sleep(5)
+            
+            # Try sequential processing for retries
+            try:
+                result = compress_file(file)
+                if result[1]:  # Success
+                    results.append(result)
+                    print(f"[compress] Successfully compressed {file} on retry {retry_count + 1}")
+                else:
+                    new_failed.append((file, retry_count + 1))
+            except Exception as e:
+                print(f"[compress] Retry failed for {file}: {e}")
+                new_failed.append((file, retry_count + 1))
+        
+        failed_files = new_failed
+    
+    # Final report of permanently failed files
+    for file, _ in failed_files:
+        results.append((file, False, "Permanent failure after all retries"))
+    
+    return results
+
 # -------------------------------------------------------
 if __name__ == "__main__":
     import argparse, subprocess, sys
@@ -413,21 +532,36 @@ if __name__ == "__main__":
             files_to_compress = [f for f in out_dir.iterdir() if f.is_file()]
             
             if files_to_compress:
-                # Use all but one physical cores for parallel processing
-                num_workers = max(1, cpu_count() - 1)
-                print(f"[compress] Processing {len(files_to_compress)} files using {num_workers} workers")
-                
-                # Process files in parallel
-                with Pool(processes=num_workers) as pool:
-                    results = pool.map(compress_file, files_to_compress)
+                # Use robust compression with automatic retry and memory management
+                results = robust_parallel_compress(files_to_compress)
                 
                 # Report results
+                critical_failures = []
                 for file, success, error_msg in results:
                     if not success:
                         if '_distVar' in file.name:
                             print(f"[compress_skip] {file}: {error_msg}", file=sys.stderr)
                         elif error_msg and error_msg != "Not a compressible file type":
                             print(f"[compress_error] {file}: {error_msg}", file=sys.stderr)
+                            if "Permanent failure" in error_msg or "Failed after" in error_msg:
+                                critical_failures.append(file)
+                
+                # Report critical failures summary
+                if critical_failures:
+                    print(f"\n[CRITICAL] {len(critical_failures)} files failed compression after all retries:", file=sys.stderr)
+                    
+                    # Also write to external log file
+                    status_log = Path("/tmp/memlog_parser_status.log")
+                    with open(status_log, "a") as log:
+                        log.write(f"\n[CRITICAL] {len(critical_failures)} files failed after all retries:\n")
+                        for f in critical_failures:
+                            log.write(f"  - {f}\n")
+                    
+                    for f in critical_failures[:10]:  # Show first 10
+                        print(f"  - {f}", file=sys.stderr)
+                    if len(critical_failures) > 10:
+                        print(f"  ... and {len(critical_failures) - 10} more", file=sys.stderr)
+                    print("\nThese files MUST be processed manually or the analysis will be incomplete!", file=sys.stderr)
     # Process compression after all subprocesses complete
     process_compression(out_dir)
     sys.exit(0)
