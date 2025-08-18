@@ -353,10 +353,10 @@ def compress_file(file: Path) -> tuple:
     if '_dist32' in filename or '_dist64' in filename:
         compression_output_file = f"{file}.compression"
         try:
-            # Run subprocess with output file argument, capture stderr for debugging
+            # Run subprocess with output file argument
             result = subprocess.run(
                 ["/usr/mmu_compressor", str(file), "--output-file", compression_output_file],
-                capture_output=True,
+                capture_output=False, # Don't capture output since mmu_compressor writes directly to file
                 text=True,
                 check=True  # Raise CalledProcessError on non-zero exit
             )
