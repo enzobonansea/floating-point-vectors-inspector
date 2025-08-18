@@ -324,14 +324,28 @@ def compress_file(file: Path) -> tuple:
     if '_dist32' in filename or '_dist64' in filename:
         compression_output_file = f"{file}.compression"
         try:
-            # Run subprocess with output file argument
-            subprocess.run(
+            # Run subprocess with output file argument, capture stderr for debugging
+            result = subprocess.run(
                 ["/usr/mmu_compressor", str(file), "--output-file", compression_output_file],
+                capture_output=True,
+                text=True,
                 check=True  # Raise CalledProcessError on non-zero exit
             )
+            
+            # Check if output file was actually created and has content
+            if not Path(compression_output_file).exists():
+                return (file, False, f"Output file not created: {compression_output_file}")
+            elif Path(compression_output_file).stat().st_size == 0:
+                # If empty, there might be an issue - log stderr if available
+                error_msg = f"Output file is empty. Stderr: {result.stderr}" if result.stderr else "Output file is empty"
+                return (file, False, error_msg)
+            
             return (file, True, None)
         except subprocess.CalledProcessError as e:
-            return (file, False, f"Process exited with code {e.returncode}")
+            error_details = f"Process exited with code {e.returncode}"
+            if e.stderr:
+                error_details += f". Stderr: {e.stderr}"
+            return (file, False, error_details)
         except Exception as e:
             return (file, False, str(e))
     
