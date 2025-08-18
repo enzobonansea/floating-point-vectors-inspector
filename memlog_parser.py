@@ -216,13 +216,13 @@ def process_compression(parsed_dir: str | os.PathLike) -> Path:
 
     total_compression_files = 0
     successful_compressions = 0
-    total_block_size = 0
+    total_compressible_size = 0
     total_compressed_size = 0
 
 
     with open(analyzed_file, "w") as outfile:
         # Imprimir encabezado CSV
-        print("filename,type,block_size,all_zeros,execution_failed,exception,ulr_miss_qty,size_reduced_percentage,validation_passed,lossless,file_size,partially_compressed_lines,total_lines", file=outfile)
+        print("filename,type,block_size,all_zeros,line_too_big_error,footer_full_error,ulr_miss_qty,footer_write_qty,footer_read_qty,size_reduced_percentage,lossless,file_size,partially_compressed_lines,total_lines", file=outfile)
 
         for file in parsed_dir.iterdir():
             if not file.is_file() or file.suffix == ".compression":
@@ -238,10 +238,16 @@ def process_compression(parsed_dir: str | os.PathLike) -> Path:
                 block_size = int(splitted_name[-2])
             except (IndexError, ValueError):
                 block_size = ""
-            try:
-                ftype = splitted_name[-1]
-            except (IndexError, ValueError):
-                ftype = ""
+            
+            # Determine type based on suffix
+            if "_dist32" in fname:
+                ftype = "float"
+            elif "_dist64" in fname:
+                ftype = "double"
+            elif "_distVar" in fname:
+                ftype = "object"
+            else:
+                ftype = "unknown"
 
             # Verificar si todas las segundas columnas son 0x0
             all_zeros = True
@@ -254,32 +260,55 @@ def process_compression(parsed_dir: str | os.PathLike) -> Path:
                         all_zeros = False
 
             ulr = ""
+            footer_write_qty = ""
+            footer_read_qty = ""
             size_reduced_vals = []
-            validation_passed = False
             lossless = False
-            execution_failed = False
-            exception = ""
+            line_too_big_error = False
+            footer_full_error = False
             partially_compressed_lines = False
 
             # Leer archivo .compression
             try:
                 with open(comp_path, "r") as compfile:
-                    output = compfile.read().splitlines()
-                    for line in output:
+                    output = compfile.read()
+                    
+                    # Check for errors
+                    if "Line too big" in output:
+                        line_too_big_error = True
+                    if "Footer is full" in output:
+                        footer_full_error = True
+                    
+                    # Parse values
+                    for line in output.splitlines():
                         if "ULR miss qty:" in line:
-                            ulr = int(line.split(':')[1].strip())
+                            try:
+                                ulr = int(line.split(':')[1].strip())
+                            except:
+                                ulr = ""
+                        if "Footer write qty:" in line:
+                            try:
+                                footer_write_qty = int(line.split(':')[1].strip())
+                            except:
+                                footer_write_qty = ""
+                        if "Footer read qty:" in line:
+                            try:
+                                footer_read_qty = int(line.split(':')[1].strip())
+                            except:
+                                footer_read_qty = ""
                         if "Size reduced by" in line:
-                            size = float(line.split()[3].replace('%', ''))
-                            size_reduced_vals.append(size)
-                        if "Validation PASSED: All" in line:
-                            validation_passed = True
+                            try:
+                                size = float(line.split()[3].replace('%', ''))
+                                size_reduced_vals.append(size)
+                            except:
+                                pass
                         if "Lossless:" in line:
                             if "True" in line:
                                 lossless = True
                                 successful_compressions += 1
-            except Exception as e:
-                execution_failed = True
-                exception = str(e)
+            except:
+                # File doesn't exist or can't be read - leave defaults
+                pass
 
             size_reduced_percentage = ""
             if len(size_reduced_vals) >= 2:
@@ -291,19 +320,19 @@ def process_compression(parsed_dir: str | os.PathLike) -> Path:
 
             file_size = os.path.getsize(dist_path)
 
-            # Actualización para el .summary
-            if isinstance(block_size, int):
-                total_block_size += block_size
-            if isinstance(size_reduced_percentage, (int, float, str)) and str(size_reduced_percentage).replace('.', '', 1).isdigit():
-                reduced = float(size_reduced_percentage)
-                total_compressed_size += block_size * (1 - reduced / 100)
+            # Actualización para el .summary - only count non-distVar files
+            if isinstance(block_size, int) and "_distVar" not in fname:
+                total_compressible_size += block_size
+                if isinstance(size_reduced_percentage, (int, float, str)) and str(size_reduced_percentage).replace('.', '', 1).isdigit():
+                    reduced = float(size_reduced_percentage)
+                    total_compressed_size += block_size * (1 - reduced / 100)
 
             # Imprimir fila CSV
-            print(f"{fname},{ftype},{block_size},{all_zeros},{execution_failed},{exception},{ulr},{size_reduced_percentage},{validation_passed},{lossless},{file_size},{partially_compressed_lines},{total_lines}", file=outfile)
+            print(f"{fname},{ftype},{block_size},{all_zeros},{line_too_big_error},{footer_full_error},{ulr},{footer_write_qty},{footer_read_qty},{size_reduced_percentage},{lossless},{file_size},{partially_compressed_lines},{total_lines}", file=outfile)
 
     with open(summary_file, "w") as summary:
-        print("compression_files,successful_compressions,total_block_size,total_compressed_size", file=summary)
-        print(f"{total_compression_files},{successful_compressions},{total_block_size},{int(total_compressed_size)}", file=summary)
+        print("compression_files,successful_compressions,total_compressible_size,total_compressed_size", file=summary)
+        print(f"{total_compression_files},{successful_compressions},{total_compressible_size},{int(total_compressed_size)}", file=summary)
 
     return analyzed_file
         
