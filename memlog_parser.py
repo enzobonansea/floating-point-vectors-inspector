@@ -414,9 +414,7 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
     Returns list of (file, success, error_msg) tuples.
     """
     if num_workers is None:
-        # Default to fewer workers for long-running processes
-        # Each compression can take 20+ hours and use significant RAM
-        num_workers = min(2, max(1, cpu_count() // 4))
+        num_workers = max(1, cpu_count() - 1)  # Leave one core free for system tasks
     
     results = []
     failed_files = []
