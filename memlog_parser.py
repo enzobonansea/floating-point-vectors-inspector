@@ -314,9 +314,9 @@ def process_compression(parsed_dir: str | os.PathLike) -> Path:
                     output = compfile.read()
                     
                     # Check for errors
-                    if "Line too big" in output:
+                    if "LineTooBigError" in output or "Line too big" in output:
                         line_too_big_error = True
-                    if "Footer is full" in output:
+                    if "FooterFullError" in output:
                         footer_full_error = True
                     
                     # Parse values
