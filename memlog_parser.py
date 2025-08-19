@@ -280,6 +280,10 @@ def process_compression(parsed_dir: str | os.PathLike) -> Path:
         for file in parsed_dir.iterdir():
             if not file.is_file() or file.suffix == ".compression":
                 continue
+            
+            # Skip the analyzed and summary files themselves
+            if file == analyzed_file or file == summary_file:
+                continue
 
             total_compression_files += 1
             fname = file.name
@@ -376,7 +380,8 @@ def process_compression(parsed_dir: str | os.PathLike) -> Path:
             # Actualización para el .summary - only count non-distVar files
             if isinstance(block_size, int) and "_distVar" not in fname:
                 total_compressible_size += block_size
-                if isinstance(size_reduced_percentage, (int, float, str)) and str(size_reduced_percentage).replace('.', '', 1).isdigit():
+                # Only count compressed size if compression was successful (lossless=True)
+                if lossless and isinstance(size_reduced_percentage, (int, float, str)) and str(size_reduced_percentage).replace('.', '', 1).isdigit():
                     reduced = float(size_reduced_percentage)
                     total_compressed_size += block_size * (1 - reduced / 100)
 
