@@ -175,11 +175,36 @@ def parse_log(log_path: str | os.PathLike) -> Path:
             if m_store:
                 addr_hex, value_hex = m_store.groups()
                 addr_int = int(addr_hex, 16)
+                
+                # Find the allocation that contains this address
+                # Start with the most likely candidate using bisect
                 pos = bisect.bisect_right(starts_sorted, addr_int) - 1
+                
+                # Check if this address falls within any live allocation
+                found = False
                 if pos >= 0:
+                    # Check the allocation at pos first (most likely candidate)
                     alloc = live_list[pos]
-                    if addr_int <= alloc.end:
+                    if alloc.start <= addr_int < alloc.end:
                         alloc.write_store(addr_hex, value_hex, temp_file)
+                        found = True
+                
+                # If not found in the expected position, search all allocations
+                # This handles cases where allocations might overlap or have gaps
+                if not found:
+                    for alloc in live_list:
+                        if alloc.start <= addr_int < alloc.end:
+                            alloc.write_store(addr_hex, value_hex, temp_file)
+                            found = True
+                            break
+                
+                # If still not found, the store is outside any live allocation
+                if not found:
+                    raise ValueError(
+                        f"STORE at address 0x{addr_hex} with value 0x{value_hex} "
+                        f"does not belong to any live allocation. "
+                        f"Current live allocations: {len(live_list)} blocks"
+                    )
                 continue
 
             # ALLOC / FREE delimiters -----------------------------------
