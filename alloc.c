@@ -4,7 +4,7 @@
 
 float* test_32bit_stores()
 {
-    int qty = 10000000;
+    int qty = 10000;
     float* ptr_f = (float*)malloc(qty*sizeof(float));
     printf("ptr_32bit_stores=%p\n", ptr_f);
     for (int i=0; i<qty; i++) *(ptr_f+i) = 0.6f;
@@ -14,7 +14,7 @@ float* test_32bit_stores()
 
 double* test_64bit_stores()
 {
-    int qty = 10000000;
+    int qty = 10000;
     double* ptr_f = (double*)malloc(qty*sizeof(double));
     printf("ptr_64bit_stores=%p\n", ptr_f);
     for (int i=0; i<qty; i++) *(ptr_f+i) = 0.6f;
@@ -24,7 +24,7 @@ double* test_64bit_stores()
 
 __m128i* test_128bit_stores()
 {
-    int qty = 1000000;
+    int qty = 1000;
 
     // Allocate memory aligned to 16 bytes for proper SSE operation
     __m128i *ptr_128 = (__m128i *)malloc(qty * sizeof(__m128i));
@@ -54,7 +54,7 @@ __m128i* test_128bit_stores()
 
 __m256i* test_256bit_stores()
 {
-    int qty = 1000000;
+    int qty = 1000;
 
     // Allocate memory aligned to 32 bytes for proper AVX operation
     __m256i *ptr_256 = (__m256i *)malloc(qty * sizeof(__m256i));
