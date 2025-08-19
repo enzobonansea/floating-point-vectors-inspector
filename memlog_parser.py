@@ -1,20 +1,16 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-
 import bisect
 import os
 import re
-import tempfile
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional, TextIO
+from typing import Dict, List, TextIO
 from tqdm import tqdm
-from multiprocessing import Pool, cpu_count, get_context
-from functools import partial
-import signal
+from multiprocessing import cpu_count, get_context
 import time
 
-# ---------------- Expresiones regulares ----------------
+# ---------------- Regex ----------------
 ALLOC_HEADER_RE = re.compile(r"^Start\s+0x([0-9a-fA-F]+),\s+size\s+(\d+)")
 STORE_RE = re.compile(r"^0x([0-9a-fA-F]+)\s+0x([0-9a-fA-F]+)")
 
@@ -42,7 +38,7 @@ def get_memory_percent():
 # -------------------------------------------------------
 
 class LiveAlloc:
-    """Representa un bloque de memoria activo entre ALLOC y FREE."""
+    """Represents an active memory block between ALLOC and FREE."""
     __slots__ = (
         "start",
         "size",
@@ -88,7 +84,7 @@ class LiveAlloc:
 
     def close_and_finalize(self, out_dir: Path, temp_file_path: Path) -> None:
         if self.store_count == 0:
-            # No STOREs ⇒ no file needed
+            # No STOREs = no file needed
             return
         
         suffix = "_distVar"
@@ -242,7 +238,7 @@ def parse_log(log_path: str | os.PathLike) -> Path:
     with open(status_log, "a") as log:
         log.write(f"[{log_path.name}] Parsing completed. Files in: {out_dir}\n")
     
-    print(f"[parse_log] Terminado. Ficheros en: {out_dir}")
+    print(f"[parse_log] Finished. Files are in: {out_dir}")
     return out_dir
 
 # Process parsed files
@@ -364,7 +360,6 @@ def process_compression(parsed_dir: str | os.PathLike) -> Path:
 
             file_size = os.path.getsize(dist_path)
 
-            # Actualizaci├│n para el .summary - only count non-distVar files
             if isinstance(block_size, int) and "_distVar" not in fname:
                 total_compressible_size += block_size
                 # Only count compressed size if compression was successful (lossless=True)
@@ -372,7 +367,6 @@ def process_compression(parsed_dir: str | os.PathLike) -> Path:
                     reduced = float(size_reduced_percentage)
                     total_compressed_size += block_size * (1 - reduced / 100)
 
-            # Imprimir fila CSV
             print(f"{fname},{ftype},{block_size},{all_zeros},{line_too_big_error},{footer_full_error},{ulr},{footer_write_qty},{footer_read_qty},{size_reduced_percentage},{lossless},{file_size},{partially_compressed_lines},{total_lines}", file=outfile)
 
     with open(summary_file, "w") as summary:
@@ -392,7 +386,7 @@ def compress_file(file: Path) -> tuple:
     filename = file.name
     # Skip _distVar files (with or without .N suffix) as they are not compressible
     if '_distVar' in filename:
-        return (file, False, f"Variable alignment files are not compressible")
+        return (file, False, f"Buffers containing objects are not compressible")
     
     # Only compress _dist32 and _dist64 files (with or without .N suffix)
     if '_dist32' in filename or '_dist64' in filename:
@@ -443,7 +437,7 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
     for file in files_to_compress:
         if '_distVar' in file.name:
             skipped_files.append(file)
-            results.append((file, False, "Variable alignment files are not compressible"))
+            results.append((file, False, "Buffers containing objects are not compressible"))
         else:
             files_to_actually_compress.append(file)
     
@@ -562,7 +556,7 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
         for file, retry_count in failed_files:
             # Skip _distVar files - they should never be in failed_files but double check
             if '_distVar' in file.name:
-                results.append((file, False, "Variable alignment files are not compressible"))
+                results.append((file, False, "Buffers containing objects are not compressible"))
                 continue
                 
             if retry_count >= max_retries:
@@ -587,14 +581,14 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
                     if '_distVar' not in file.name:
                         new_failed.append((file, retry_count + 1))
                     else:
-                        results.append((file, False, "Variable alignment files are not compressible"))
+                        results.append((file, False, "Buffers containing objects are not compressible"))
             except Exception as e:
                 print(f"[compress] Retry failed for {file}: {e}")
                 # Don't retry _distVar files
                 if '_distVar' not in file.name:
                     new_failed.append((file, retry_count + 1))
                 else:
-                    results.append((file, False, "Variable alignment files are not compressible"))
+                    results.append((file, False, "Buffers containing objects are not compressible"))
         
         failed_files = new_failed
     
