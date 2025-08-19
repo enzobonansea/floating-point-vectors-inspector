@@ -1,17 +1,4 @@
 #!/usr/bin/env python3
-"""parse_valgrind_log.py – ignora ALLOCs sin STORE
-
-Procesa un log Valgrind en streaming y, **solo si un bloque ALLOC recibe al menos
-una STORE antes de su FREE**, genera un fichero con formato:
-```
-0x<start_hex>_<size>_<sufijo>
-0x<address_hex> 0x<value_hex> <offset_dec>
-```
-`<sufijo>` = `_dist64`, `_dist32` o `_distVar` según alineamiento.
-
-En cuanto aparece el FREE, el fichero se cierra y se renombra; si quedó vacío se
-elimina.  Dependencias: Python ≥ 3.8 y opcionalmente `tqdm`.
-"""
 from __future__ import annotations
 
 import bisect
@@ -377,7 +364,7 @@ def process_compression(parsed_dir: str | os.PathLike) -> Path:
 
             file_size = os.path.getsize(dist_path)
 
-            # Actualización para el .summary - only count non-distVar files
+            # Actualizaci├│n para el .summary - only count non-distVar files
             if isinstance(block_size, int) and "_distVar" not in fname:
                 total_compressible_size += block_size
                 # Only count compressed size if compression was successful (lossless=True)
@@ -448,31 +435,50 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
     
     results = []
     failed_files = []
+    skipped_files = []
     max_retries = 3
     
+    # First, separate _distVar files which should be skipped
+    files_to_actually_compress = []
+    for file in files_to_compress:
+        if '_distVar' in file.name:
+            skipped_files.append(file)
+            results.append((file, False, "Variable alignment files are not compressible"))
+        else:
+            files_to_actually_compress.append(file)
+    
+    # Report skipped files immediately
+    if skipped_files:
+        print(f"[compress] Skipped {len(skipped_files)} _distVar files (not compressible)")
+    
+    # If no files to actually compress, return early
+    if not files_to_actually_compress:
+        return results
+    
     # First attempt with multiprocessing pool
-    print(f"[compress] Processing {len(files_to_compress)} files using {num_workers} workers")
+    print(f"[compress] Processing {len(files_to_actually_compress)} files using {num_workers} workers")
     
     # Also log to external file
     status_log = Path("/tmp/memlog_parser_status.log")
     with open(status_log, "a") as log:
-        log.write(f"[compress] Starting compression of {len(files_to_compress)} files with {num_workers} workers\n")
+        log.write(f"[compress] Starting compression of {len(files_to_actually_compress)} files with {num_workers} workers\n")
+        log.write(f"[compress] Skipped {len(skipped_files)} _distVar files\n")
         log.write(f"[compress] Initial memory usage: {get_memory_percent():.1f}%\n")
     
     processed_count = 0
-    expected_count = len(files_to_compress)
+    expected_count = len(files_to_actually_compress)
     
     try:
         # Use spawn context for better memory isolation
         ctx = get_context('spawn')
         
         # Process in smaller chunks to avoid overwhelming memory
-        chunk_size = max(1, len(files_to_compress) // (num_workers * 4))
+        chunk_size = max(1, len(files_to_actually_compress) // (num_workers * 4))
         
         with ctx.Pool(processes=num_workers, maxtasksperchild=10) as pool:
             # Use apply_async with timeout for better control
             async_results = []
-            for file in files_to_compress:
+            for file in files_to_actually_compress:
                 async_results.append((file, pool.apply_async(compress_file, (file,))))
             
             # Monitor results without blocking timeout
@@ -541,10 +547,10 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
             log.write(f"[compress] POOL FAILURE: {error_msg}\n")
             log.write(f"[compress] Processed {processed_count} out of {expected_count} files before failure\n")
         
-        # Add all unprocessed files to failed list
+        # Add all unprocessed files to failed list (excluding already skipped _distVar files)
         processed_files = {r[0] for r in results}
         processed_files.update({f for f, _ in failed_files})
-        for f in files_to_compress:
+        for f in files_to_actually_compress:
             if f not in processed_files:
                 failed_files.append((f, 0))
     
@@ -554,6 +560,11 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
         new_failed = []
         
         for file, retry_count in failed_files:
+            # Skip _distVar files - they should never be in failed_files but double check
+            if '_distVar' in file.name:
+                results.append((file, False, "Variable alignment files are not compressible"))
+                continue
+                
             if retry_count >= max_retries:
                 # Max retries reached, mark as permanently failed
                 results.append((file, False, f"Failed after {max_retries} retries"))
@@ -572,10 +583,18 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
                     results.append(result)
                     print(f"[compress] Successfully compressed {file} on retry {retry_count + 1}")
                 else:
-                    new_failed.append((file, retry_count + 1))
+                    # Don't retry _distVar files
+                    if '_distVar' not in file.name:
+                        new_failed.append((file, retry_count + 1))
+                    else:
+                        results.append((file, False, "Variable alignment files are not compressible"))
             except Exception as e:
                 print(f"[compress] Retry failed for {file}: {e}")
-                new_failed.append((file, retry_count + 1))
+                # Don't retry _distVar files
+                if '_distVar' not in file.name:
+                    new_failed.append((file, retry_count + 1))
+                else:
+                    results.append((file, False, "Variable alignment files are not compressible"))
         
         failed_files = new_failed
     
