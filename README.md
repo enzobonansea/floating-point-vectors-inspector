@@ -44,7 +44,7 @@ The `install.sh` script automates the local build process:
 
 ```bash
 # 1. Clone the repository with submodules
-git clone --recursive https://github.com/your-repo/floating-point-vectors-inspector.git
+git clone --recursive https://github.com/enzobonansea/floating-point-vectors-inspector.git
 cd floating-point-vectors-inspector
 
 # 2. Place the SPEC2017 ISO in the root directory
