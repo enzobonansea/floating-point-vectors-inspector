@@ -379,14 +379,16 @@ def process_compression(parsed_dir: str | os.PathLike) -> Path:
 
 # Helper function for parallel compression
 def compress_file(file: Path) -> tuple:
-    """Compress a single file and return result tuple."""
+    """Compress a single file and return result tuple.
+    Returns (file, success, error_msg, is_unrecoverable)
+    """
     import subprocess
     import sys
     
     filename = file.name
     # Skip _distVar files (with or without .N suffix) as they are not compressible
     if '_distVar' in filename:
-        return (file, False, f"Buffers containing objects are not compressible")
+        return (file, False, f"Buffers containing objects are not compressible", False)
     
     # Only compress _dist32 and _dist64 files (with or without .N suffix)
     if '_dist32' in filename or '_dist64' in filename:
@@ -402,22 +404,41 @@ def compress_file(file: Path) -> tuple:
             
             # Check if output file was actually created and has content
             if not Path(compression_output_file).exists():
-                return (file, False, f"Output file not created: {compression_output_file}")
+                return (file, False, f"Output file not created: {compression_output_file}", False)
             elif Path(compression_output_file).stat().st_size == 0:
                 # If empty, there might be an issue - log stderr if available
                 error_msg = f"Output file is empty. Stderr: {result.stderr}" if result.stderr else "Output file is empty"
-                return (file, False, error_msg)
+                return (file, False, error_msg, False)
             
-            return (file, True, None)
+            # Check for unrecoverable errors in the output file
+            try:
+                with open(compression_output_file, 'r') as f:
+                    output_content = f.read()
+                    if "Line too big" in output_content or "Footer is full" in output_content:
+                        # These are unrecoverable errors - don't retry
+                        error_msg = "Unrecoverable error: "
+                        if "Line too big" in output_content:
+                            error_msg += "Line too big"
+                        if "Footer is full" in output_content:
+                            if "Line too big" in output_content:
+                                error_msg += " and Footer is full"
+                            else:
+                                error_msg += "Footer is full"
+                        return (file, False, error_msg, True)  # Mark as unrecoverable
+            except Exception:
+                # If we can't read the file, continue normally
+                pass
+            
+            return (file, True, None, False)
         except subprocess.CalledProcessError as e:
             error_details = f"Process exited with code {e.returncode}"
             if e.stderr:
                 error_details += f". Stderr: {e.stderr}"
-            return (file, False, error_details)
+            return (file, False, error_details, False)
         except Exception as e:
-            return (file, False, str(e))
+            return (file, False, str(e), False)
     
-    return (file, False, "Not a compressible file type")
+    return (file, False, "Not a compressible file type", False)
 
 def robust_parallel_compress(files_to_compress, num_workers=None):
     """
@@ -428,7 +449,7 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
         num_workers = max(1, cpu_count() - 1)  # Leave one core free for system tasks
     
     results = []
-    failed_files = []
+    failed_files = []  # List of (file, retry_count, is_unrecoverable) tuples
     skipped_files = []
     max_retries = 3
     
@@ -494,10 +515,18 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
                         if async_result.ready():
                             try:
                                 result = async_result.get(timeout=1)  # Should be immediate since it's ready
+                                # result is now (file, success, error_msg, is_unrecoverable)
                                 if result[1]:  # Success
-                                    results.append(result)
+                                    results.append(result[:3])  # Only keep first 3 elements for results
                                 else:
-                                    failed_files.append((result[0], 0))
+                                    # Check if it's unrecoverable
+                                    is_unrecoverable = result[3] if len(result) > 3 else False
+                                    if is_unrecoverable:
+                                        # Don't add to failed_files for retry, add directly to results
+                                        results.append(result[:3])
+                                        print(f"[compress] Unrecoverable error for {file}: {result[2]}")
+                                    else:
+                                        failed_files.append((result[0], 0, False))
                                 newly_completed.append(idx)
                                 processed_count += 1
                             except Exception as e:
@@ -506,7 +535,7 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
                                 print(f"[compress] {error_msg} for {file}")
                                 with open(status_log, "a") as log:
                                     log.write(f"[compress] WORKER KILLED: {file} - {error_msg}\n")
-                                failed_files.append((file, 0))
+                                failed_files.append((file, 0, False))  # Not unrecoverable, can retry
                                 newly_completed.append(idx)
                                 processed_count += 1
                 
@@ -543,20 +572,25 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
         
         # Add all unprocessed files to failed list (excluding already skipped _distVar files)
         processed_files = {r[0] for r in results}
-        processed_files.update({f for f, _ in failed_files})
+        processed_files.update({f for f, _, _ in failed_files})
         for f in files_to_actually_compress:
             if f not in processed_files:
-                failed_files.append((f, 0))
+                failed_files.append((f, 0, False))  # Not unrecoverable, can retry
     
     # Retry failed files with reduced parallelism or sequentially
-    while failed_files and any(retry_count < max_retries for _, retry_count in failed_files):
+    while failed_files and any(retry_count < max_retries and not is_unrec for _, retry_count, is_unrec in failed_files):
         print(f"[compress] Retrying {len(failed_files)} failed files...")
         new_failed = []
         
-        for file, retry_count in failed_files:
+        for file, retry_count, is_unrecoverable in failed_files:
             # Skip _distVar files - they should never be in failed_files but double check
             if '_distVar' in file.name:
                 results.append((file, False, "Buffers containing objects are not compressible"))
+                continue
+            
+            # Skip unrecoverable errors
+            if is_unrecoverable:
+                results.append((file, False, f"Unrecoverable error - no retry attempted"))
                 continue
                 
             if retry_count >= max_retries:
@@ -573,28 +607,37 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
             # Try sequential processing for retries
             try:
                 result = compress_file(file)
+                # result is now (file, success, error_msg, is_unrecoverable)
                 if result[1]:  # Success
-                    results.append(result)
+                    results.append(result[:3])  # Only keep first 3 elements
                     print(f"[compress] Successfully compressed {file} on retry {retry_count + 1}")
                 else:
-                    # Don't retry _distVar files
-                    if '_distVar' not in file.name:
-                        new_failed.append((file, retry_count + 1))
+                    # Check if the new failure is unrecoverable
+                    is_unrecoverable_now = result[3] if len(result) > 3 else False
+                    if is_unrecoverable_now:
+                        # Don't retry unrecoverable errors
+                        results.append(result[:3])
+                        print(f"[compress] Unrecoverable error encountered on retry for {file}: {result[2]}")
+                    elif '_distVar' not in file.name:
+                        new_failed.append((file, retry_count + 1, False))
                     else:
                         results.append((file, False, "Buffers containing objects are not compressible"))
             except Exception as e:
                 print(f"[compress] Retry failed for {file}: {e}")
                 # Don't retry _distVar files
                 if '_distVar' not in file.name:
-                    new_failed.append((file, retry_count + 1))
+                    new_failed.append((file, retry_count + 1, False))
                 else:
                     results.append((file, False, "Buffers containing objects are not compressible"))
         
         failed_files = new_failed
     
     # Final report of permanently failed files
-    for file, _ in failed_files:
-        results.append((file, False, "Permanent failure after all retries"))
+    for file, _, is_unrecoverable in failed_files:
+        if is_unrecoverable:
+            results.append((file, False, "Unrecoverable error - no retry attempted"))
+        else:
+            results.append((file, False, "Permanent failure after all retries"))
     
     return results
 
@@ -642,7 +685,8 @@ if __name__ == "__main__":
                             print(f"[compress] Progress: {idx + 1}/{len(files_to_compress)}")
                         try:
                             result = compress_file(file)
-                            results.append(result)
+                            # result is now (file, success, error_msg, is_unrecoverable)
+                            results.append(result[:3])  # Only keep first 3 elements for compatibility
                         except Exception as e:
                             results.append((file, False, str(e)))
                 else:
