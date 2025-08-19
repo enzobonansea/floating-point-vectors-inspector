@@ -426,13 +426,10 @@ def process_compression(parsed_dir: str | os.PathLike) -> Path:
         print("-" * 40, file=report)
         if compression_rate > 70:
             print("✓ EXCELLENT: Most buffers compressed successfully!", file=report)
-            print("  Your data has high redundancy/patterns.", file=report)
         elif compression_rate > 40:
             print("⚠ MODERATE: Some buffers compressed well.", file=report)
-            print("  Mixed data patterns - some redundant, some random.", file=report)
         else:
             print("✗ POOR: Few buffers compressed successfully.", file=report)
-            print("  Data appears mostly random or unique.", file=report)
         print(file=report)
         
         if size_reduction > 50:
@@ -499,42 +496,32 @@ def compress_file(file: Path) -> tuple:
                         ["/usr/mmu_compressor", str(file), "--output-file", compression_output_file],
                         capture_output=False, # Don't capture output since mmu_compressor writes directly to file
                         text=True,
-                        check=True  # Raise CalledProcessError on non-zero exit
+                        check=False  # Don't raise on non-zero exit, we'll handle it manually
                     )
+                    
+                    # Check return code
+                    # 0 = success, 1 = recoverable error, 2 = unrecoverable error
+                    if result.returncode == 2:
+                        error_msg = "Unrecoverable error"
+                        return (file, False, error_msg, True)  # Mark as unrecoverable
+                    elif result.returncode == 1:
+                        # Recoverable error
+                        error_msg = f"Process exited with code {result.returncode} (recoverable)"
+                        return (file, False, error_msg, False)  # Recoverable, can retry
+                    elif result.returncode != 0:
+                        # Other non-zero exit codes
+                        error_msg = f"Process exited with code {result.returncode}"
+                        return (file, False, error_msg, False)  # Treat as recoverable
                     
                     # Check if output file was actually created and has content
                     if not Path(compression_output_file).exists():
                         return (file, False, f"Output file not created: {compression_output_file}", False)
                     elif Path(compression_output_file).stat().st_size == 0:
-                        # If empty, there might be an issue - log stderr if available
-                        error_msg = f"Output file is empty. Stderr: {result.stderr}" if result.stderr else "Output file is empty"
+                        # If empty, there might be an issue
+                        error_msg = "Output file is empty"
                         return (file, False, error_msg, False)
                     
-                    # Check for unrecoverable errors in the output file
-                    try:
-                        with open(compression_output_file, 'r') as f:
-                            output_content = f.read()
-                            if "Line too big" in output_content or "Footer is full" in output_content:
-                                # These are unrecoverable errors - don't retry
-                                error_msg = "Unrecoverable error: "
-                                if "Line too big" in output_content:
-                                    error_msg += "Line too big"
-                                if "Footer is full" in output_content:
-                                    if "Line too big" in output_content:
-                                        error_msg += " and Footer is full"
-                                    else:
-                                        error_msg += "Footer is full"
-                                return (file, False, error_msg, True)  # Mark as unrecoverable
-                    except Exception:
-                        # If we can't read the file, continue normally
-                        pass
-                    
                     return (file, True, None, False)
-                except subprocess.CalledProcessError as e:
-                    error_details = f"Process exited with code {e.returncode}"
-                    if e.stderr:
-                        error_details += f". Stderr: {e.stderr}"
-                    return (file, False, error_details, False)
                 except Exception as e:
                     return (file, False, str(e), False)
     
@@ -554,6 +541,7 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
     max_retries = 3
     
     # First, separate object type .stores files which should be skipped
+    # Also check for existing .compression files with unrecoverable errors
     files_to_actually_compress = []
     for file in files_to_compress:
         if file.name.endswith('.stores'):
@@ -562,6 +550,18 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
                 skipped_files.append(file)
                 results.append((file, False, "Buffers containing objects are not compressible"))
             else:
+                # Check if a .compression file already exists with unrecoverable errors
+                compression_file = Path(str(file) + ".compression")
+                if compression_file.exists():
+                    with open(compression_file, 'r') as f:
+                        content = f.read()
+                        # Check for unrecoverable errors
+                        if "FooterFullError" in content or "LineTooBigError" in content or "Line too big" in content:
+                            # Skip this file - it has unrecoverable errors
+                            error_msg = "Skipping - existing compression has unrecoverable error"
+                            print(f"[compress] Skipping {file.name} - unrecoverable error already detected")
+                            results.append((file, False, error_msg))
+                            continue
                 files_to_actually_compress.append(file)
         else:
             files_to_actually_compress.append(file)
