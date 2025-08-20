@@ -195,6 +195,11 @@ def parse_log(log_path: str | os.PathLike, max_open_files: int = 512) -> Path:
         live_allocs[alloc.start].pop()
 
     file_size = log_path.stat().st_size
+    status_log = Path("/tmp/memlog_parser_status.log")
+    bytes_processed = 0
+    last_log_bytes = 0
+    log_interval = file_size // 100  # Log every 1% of progress
+    
     with tqdm(total=file_size, desc="Parsing log", unit="B", unit_scale=True) as pbar, \
          log_path.open("r", encoding="utf-8", errors="ignore") as fh:
 
@@ -202,6 +207,17 @@ def parse_log(log_path: str | os.PathLike, max_open_files: int = 512) -> Path:
 
         for line in fh:
             pbar.update(len(line))
+            bytes_processed += len(line)
+            
+            # Log progress at intervals
+            if bytes_processed - last_log_bytes >= log_interval or bytes_processed >= file_size:
+                percent = (bytes_processed / file_size) * 100
+                with open(status_log, "a") as log:
+                    if bytes_processed >= file_size:
+                        log.write(f"[{log_path.name}] Parsing completed. Files in: {out_dir}\n")
+                    else:
+                        log.write(f"[{log_path.name}] Parsing progress: {percent:.1f}%. Files in: {out_dir}\n")
+                last_log_bytes = bytes_processed
 
             # STORE ------------------------------------------------------
             m_store = STORE_RE.match(line)
@@ -276,11 +292,6 @@ def parse_log(log_path: str | os.PathLike, max_open_files: int = 512) -> Path:
 
     # Close all file handles in the cache
     file_cache.close_all()
-
-    # Log the status of the parsing
-    status_log = Path("/tmp/memlog_parser_status.log")
-    with open(status_log, "a") as log:
-        log.write(f"[{log_path.name}] Parsing completed. Files in: {out_dir}\n")
 
     print(f"[parse_log] Finished. Files are in: {out_dir}")
     return out_dir
