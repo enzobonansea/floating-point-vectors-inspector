@@ -35,10 +35,55 @@ def get_memory_percent():
         pass
     return 0  # Return 0 if we can't determine memory usage
 
-# -------------------------------------------------------
+# ---------------- File handle cache (LRU) ----------------
+class FileCache:
+    """Evita demasiados archivos abiertos simultáneamente."""
+    def __init__(self, max_open: int = 512):
+        self.max_open = max_open
+        self._handles: Dict[Path, Tuple[TextIO, int]] = {}
+        self._tick = 0
 
+    def _evict_if_needed(self):
+        if len(self._handles) < self.max_open:
+            return
+        # Evict LRU
+        lru_path = min(self._handles.items(), key=lambda kv: kv[1][1])[0]
+        try:
+            self._handles[lru_path][0].close()
+        finally:
+            del self._handles[lru_path]
+
+    def write_line(self, path: Path, line: str):
+        self._tick += 1
+        if path in self._handles:
+            fh, _ = self._handles[path]
+            self._handles[path] = (fh, self._tick)
+        else:
+            self._evict_if_needed()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            fh = open(path, "a", encoding="utf-8")
+            self._handles[path] = (fh, self._tick)
+        self._handles[path][0].write(line)
+
+    def close_path(self, path: Path):
+        h = self._handles.pop(path, None)
+        if h:
+            try:
+                h[0].close()
+            except:
+                pass
+
+    def close_all(self):
+        for fh, _ in list(self._handles.values()):
+            try:
+                fh.close()
+            except:
+                pass
+        self._handles.clear()
+
+# -------------------------------------------------------
 class LiveAlloc:
-    """Represents an active memory block between ALLOC and FREE."""
+    """Representa un bloque vivo entre ALLOC y FREE."""
     __slots__ = (
         "start",
         "size",
@@ -47,10 +92,8 @@ class LiveAlloc:
         "aligned32",
         "aligned64",
         "base_core",
-        "store_path",
-        "temp_file_offset",  # Offset in shared temp file
-        "temp_file_size",    # Size written to temp file
-        "usage_num",         # Usage number for this address
+        "tmp_path",      # archivo temporal propio del alloc
+        "usage_num",
     )
 
     def __init__(self, start: int, size: int, base_core: str, out_dir: Path, usage_num: int):
@@ -61,62 +104,71 @@ class LiveAlloc:
         self.aligned64 = True
         self.base_core = base_core
         self.store_count = 0
-        self.store_path = out_dir / f".{base_core}.tmp"
-        self.temp_file_offset = -1  # Will be set when first store written
-        self.temp_file_size = 0
         self.usage_num = usage_num
+        # Temporal per-alloc (renombrado al final según tipo)
+        self.tmp_path = out_dir / f".{base_core}_{usage_num}.tmp"
 
-    def write_store(self, addr_hex: str, value_hex: str, temp_file: TextIO) -> None:
+    def write_store(self, addr_hex: str, value_hex: str, file_cache: FileCache) -> None:
         addr = int(addr_hex, 16)
+        # sanity: bounds
+        if not (self.start <= addr < self.end):
+            # Fuera de rango: ignorar silenciosamente o loguear si querés
+            return
         offset = addr - self.start
-        
-        # Track position if first write
-        if self.temp_file_offset == -1:
-            self.temp_file_offset = temp_file.tell()
-        
+
         line = f"0x{addr_hex.lower()} 0x{value_hex.lower()} {offset}\n"
-        temp_file.write(line)
-        self.temp_file_size += len(line.encode('utf-8'))
+        file_cache.write_line(self.tmp_path, line)
         self.store_count += 1
-        
-        if self.aligned32 and offset % 4 != 0:
+
+        if self.aligned32 and (offset % 4 != 0):
             self.aligned32 = False
-        if self.aligned64 and offset % 8 != 0:
+        if self.aligned64 and (offset % 8 != 0):
             self.aligned64 = False
 
-    def close_and_finalize(self, out_dir: Path, temp_file_path: Path) -> None:
+    def close_and_finalize(self, out_dir: Path, file_cache: FileCache) -> None:
+        # Cerrar handle del temporal por si está en cache
+        file_cache.close_path(self.tmp_path)
+
         if self.store_count == 0:
-            # No STOREs = no file needed
+            # No hay STOREs -> eliminar temporal si existe
+            try:
+                if self.tmp_path.exists():
+                    self.tmp_path.unlink()
+            except:
+                pass
             return
-        
-        # Determine type based on alignment
+
+        # Determinar tipo por alineación
         type_name = "object"
         if self.aligned32:
             type_name = "double" if self.aligned64 else "float"
-        
-        # Create new name with usage number and .stores extension
-        # Format: 0xaddress_size_type_N.stores
+
         target = out_dir / f"{self.base_core}_{type_name}_{self.usage_num}.stores"
-        
-        # Copy data from shared temp file to individual file
-        with open(temp_file_path, "rb") as src:
-            src.seek(self.temp_file_offset)
-            with open(target, "wb") as dst:
-                # Copy in chunks to handle large data
-                remaining = self.temp_file_size
-                chunk_size = 8192
-                while remaining > 0:
-                    to_read = min(chunk_size, remaining)
-                    data = src.read(to_read)
-                    if not data:
-                        break
-                    dst.write(data)
-                    remaining -= len(data)
+
+        # Renombrar atomícamente
+        try:
+            os.replace(self.tmp_path, target)
+        except OSError as e:
+            if e.errno == errno.EXDEV:
+                # Cross-device: copiar y borrar
+                with open(self.tmp_path, "rb") as src, open(target, "wb") as dst:
+                    while True:
+                        chunk = src.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        dst.write(chunk)
+                try:
+                    os.unlink(self.tmp_path)
+                except:
+                    pass
+            else:
+                raise
 
 # -------------------------------------------------------
-
-def parse_log(log_path: str | os.PathLike) -> Path:
-    """Parses a huge Valgrind log; outputs files only for ALLOCs that get STOREs."""
+def parse_log(log_path: str | os.PathLike, max_open_files: int = 512) -> Path:
+    """Parses a huge Valgrind log; outputs files only for ALLOCs that get STOREs.
+       FIX: cada alloc escribe a su propio temporal; no hay intercalado incorrecto.
+    """
     log_path = Path(log_path)
     if not log_path.is_file():
         raise FileNotFoundError(log_path)
@@ -127,8 +179,9 @@ def parse_log(log_path: str | os.PathLike) -> Path:
     live_allocs: Dict[int, List[LiveAlloc]] = defaultdict(list)
     starts_sorted: List[int] = []
     live_list: List[LiveAlloc] = []
-    # Track usage count per address
     address_usage_count: Dict[int, int] = defaultdict(int)
+
+    file_cache = FileCache(max_open=max_open_files)
 
     def _add(alloc: LiveAlloc):
         idx = bisect.bisect_left(starts_sorted, alloc.start)
@@ -142,13 +195,9 @@ def parse_log(log_path: str | os.PathLike) -> Path:
         live_list.pop(idx)
         live_allocs[alloc.start].pop()
 
-    # Create a single shared temporary file for all stores
-    temp_file_path = out_dir / ".shared_temp_stores.tmp"
-    
     file_size = log_path.stat().st_size
     with tqdm(total=file_size, desc="Parsing log", unit="B", unit_scale=True) as pbar, \
-         log_path.open("r", encoding="utf-8", errors="ignore") as fh, \
-         temp_file_path.open("w", encoding="utf-8") as temp_file:
+         log_path.open("r", encoding="utf-8", errors="ignore") as fh:
 
         inside_alloc = inside_free = False
 
@@ -160,35 +209,29 @@ def parse_log(log_path: str | os.PathLike) -> Path:
             if m_store:
                 addr_hex, value_hex = m_store.groups()
                 addr_int = int(addr_hex, 16)
-                
-                # Find the allocation that contains this address
-                # Start with the most likely candidate using bisect
+
+                # Buscar el alloc contenedor (usar bisect + fallback)
                 pos = bisect.bisect_right(starts_sorted, addr_int) - 1
-                
-                # Check if this address falls within any live allocation
                 found = False
                 if pos >= 0:
-                    # Check the allocation at pos first (most likely candidate)
                     alloc = live_list[pos]
                     if alloc.start <= addr_int < alloc.end:
-                        alloc.write_store(addr_hex, value_hex, temp_file)
+                        alloc.write_store(addr_hex, value_hex, file_cache)
                         found = True
-                
-                # If not found in the expected position, search all allocations
-                # This handles cases where allocations might overlap or have gaps
+
                 if not found:
+                    # Fallback: buscar linealmente (pocas veces ocurre)
                     for alloc in live_list:
                         if alloc.start <= addr_int < alloc.end:
-                            alloc.write_store(addr_hex, value_hex, temp_file)
+                            alloc.write_store(addr_hex, value_hex, file_cache)
                             found = True
                             break
-                
-                # If still not found, the store is outside any live allocation
+
                 if not found:
+                    # STORE fuera de cualquier alloc vivo -> opcional: ignorar o levantar
                     raise ValueError(
-                        f"STORE at address 0x{addr_hex} with value 0x{value_hex} "
-                        f"does not belong to any live allocation. "
-                        f"Current live allocations: {len(live_list)} blocks"
+                        f"STORE 0x{addr_hex} no pertenece a ningún ALLOC vivo "
+                        f"(live={len(live_list)})."
                     )
                 continue
 
@@ -201,7 +244,7 @@ def parse_log(log_path: str | os.PathLike) -> Path:
                 inside_free = True; continue
             if line.startswith("===FREE END==="):
                 inside_free = False; continue
-            
+
             # ALLOC header ----------------------------------------------
             if inside_alloc:
                 m_alloc = ALLOC_HEADER_RE.match(line)
@@ -210,7 +253,6 @@ def parse_log(log_path: str | os.PathLike) -> Path:
                     start_int = int(start_hex, 16)
                     size_int = int(size_str)
                     base_core = f"0x{start_hex.lower()}_{size_int}"
-                    # Increment usage count for this address
                     address_usage_count[start_int] += 1
                     _add(LiveAlloc(start_int, size_int, base_core, out_dir, address_usage_count[start_int]))
                 continue
@@ -224,24 +266,23 @@ def parse_log(log_path: str | os.PathLike) -> Path:
                     stack = live_allocs.get(start_int)
                     if stack:
                         alloc = stack[-1]
-                        alloc.close_and_finalize(out_dir, temp_file_path)
+                        alloc.close_and_finalize(out_dir, file_cache)
                         _remove(alloc)
                 continue
 
-    # Finaliza los allocs vivos sin FREE
+    # Finalizar allocs vivos sin FREE
     for alloc in list(live_list):
-        alloc.close_and_finalize(out_dir, temp_file_path)
+        alloc.close_and_finalize(out_dir, file_cache)
         _remove(alloc)
-    
-    # Clean up the shared temp file
-    if temp_file_path.exists():
-        temp_file_path.unlink()
 
-    # Write status to a log file that persists outside SPEC's redirection
+    # Cerrar todo
+    file_cache.close_all()
+
+    # Status persistente
     status_log = Path("/tmp/memlog_parser_status.log")
     with open(status_log, "a") as log:
         log.write(f"[{log_path.name}] Parsing completed. Files in: {out_dir}\n")
-    
+
     print(f"[parse_log] Finished. Files are in: {out_dir}")
     return out_dir
 
@@ -424,9 +465,9 @@ def process_compression(parsed_dir: str | os.PathLike) -> Path:
         
         print("WHAT THIS MEANS:", file=report)
         print("-" * 40, file=report)
-        if compression_rate > 70:
+        if compression_rate > 40:
             print("✓ EXCELLENT: Most buffers compressed successfully!", file=report)
-        elif compression_rate > 40:
+        elif compression_rate > 20:
             print("⚠ MODERATE: Some buffers compressed well.", file=report)
         else:
             print("✗ POOR: Few buffers compressed successfully.", file=report)
