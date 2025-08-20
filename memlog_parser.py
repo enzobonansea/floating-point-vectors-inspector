@@ -37,7 +37,7 @@ def get_memory_percent():
 
 # ---------------- File handle cache (LRU) ----------------
 class FileCache:
-    """Evita demasiados archivos abiertos simultáneamente."""
+    """LRU cache for file handles to avoid too many open files."""
     def __init__(self, max_open: int = 512):
         self.max_open = max_open
         self._handles: Dict[Path, Tuple[TextIO, int]] = {}
@@ -83,7 +83,7 @@ class FileCache:
 
 # -------------------------------------------------------
 class LiveAlloc:
-    """Representa un bloque vivo entre ALLOC y FREE."""
+    """Represents a live memory allocation block between ALLOC and FREE."""
     __slots__ = (
         "start",
         "size",
@@ -92,7 +92,7 @@ class LiveAlloc:
         "aligned32",
         "aligned64",
         "base_core",
-        "tmp_path",      # archivo temporal propio del alloc
+        "tmp_path",      # temp file of the alloc
         "usage_num",
     )
 
@@ -105,15 +105,14 @@ class LiveAlloc:
         self.base_core = base_core
         self.store_count = 0
         self.usage_num = usage_num
-        # Temporal per-alloc (renombrado al final según tipo)
+        # Temporal per-alloc
         self.tmp_path = out_dir / f".{base_core}_{usage_num}.tmp"
 
     def write_store(self, addr_hex: str, value_hex: str, file_cache: FileCache) -> None:
         addr = int(addr_hex, 16)
         # sanity: bounds
         if not (self.start <= addr < self.end):
-            # Fuera de rango: ignorar silenciosamente o loguear si querés
-            return
+            raise
         offset = addr - self.start
 
         line = f"0x{addr_hex.lower()} 0x{value_hex.lower()} {offset}\n"
@@ -126,11 +125,11 @@ class LiveAlloc:
             self.aligned64 = False
 
     def close_and_finalize(self, out_dir: Path, file_cache: FileCache) -> None:
-        # Cerrar handle del temporal por si está en cache
+        # Close the file handle if it's cached
         file_cache.close_path(self.tmp_path)
 
         if self.store_count == 0:
-            # No hay STOREs -> eliminar temporal si existe
+            # No stores written, delete temp file if exists
             try:
                 if self.tmp_path.exists():
                     self.tmp_path.unlink()
@@ -138,14 +137,14 @@ class LiveAlloc:
                 pass
             return
 
-        # Determinar tipo por alineación
+        # Determine type based on alignment
         type_name = "object"
         if self.aligned32:
             type_name = "double" if self.aligned64 else "float"
 
         target = out_dir / f"{self.base_core}_{type_name}_{self.usage_num}.stores"
 
-        # Renombrar atomícamente
+        # Rename atomically
         try:
             os.replace(self.tmp_path, target)
         except OSError as e:
@@ -210,7 +209,7 @@ def parse_log(log_path: str | os.PathLike, max_open_files: int = 512) -> Path:
                 addr_hex, value_hex = m_store.groups()
                 addr_int = int(addr_hex, 16)
 
-                # Buscar el alloc contenedor (usar bisect + fallback)
+                # Find the containing alloc using binary search
                 pos = bisect.bisect_right(starts_sorted, addr_int) - 1
                 found = False
                 if pos >= 0:
@@ -220,7 +219,7 @@ def parse_log(log_path: str | os.PathLike, max_open_files: int = 512) -> Path:
                         found = True
 
                 if not found:
-                    # Fallback: buscar linealmente (pocas veces ocurre)
+                    # Fallback linear search (rare case)
                     for alloc in live_list:
                         if alloc.start <= addr_int < alloc.end:
                             alloc.write_store(addr_hex, value_hex, file_cache)
@@ -228,9 +227,9 @@ def parse_log(log_path: str | os.PathLike, max_open_files: int = 512) -> Path:
                             break
 
                 if not found:
-                    # STORE fuera de cualquier alloc vivo -> opcional: ignorar o levantar
+                    # STORE out of any live ALLOC
                     raise ValueError(
-                        f"STORE 0x{addr_hex} no pertenece a ningún ALLOC vivo "
+                        f"STORE 0x{addr_hex} does not belong to any live ALLOC. "
                         f"(live={len(live_list)})."
                     )
                 continue
@@ -270,15 +269,15 @@ def parse_log(log_path: str | os.PathLike, max_open_files: int = 512) -> Path:
                         _remove(alloc)
                 continue
 
-    # Finalizar allocs vivos sin FREE
+    # Finalize all live allocations that didn't get a FREE
     for alloc in list(live_list):
         alloc.close_and_finalize(out_dir, file_cache)
         _remove(alloc)
 
-    # Cerrar todo
+    # Close all file handles in the cache
     file_cache.close_all()
 
-    # Status persistente
+    # Log the status of the parsing
     status_log = Path("/tmp/memlog_parser_status.log")
     with open(status_log, "a") as log:
         log.write(f"[{log_path.name}] Parsing completed. Files in: {out_dir}\n")
