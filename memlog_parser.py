@@ -464,15 +464,15 @@ def process_compression(parsed_dir: str | os.PathLike) -> Path:
         
         print("WHAT THIS MEANS:", file=report)
         print("-" * 40, file=report)
-        if compression_rate > 40:
+        if compression_rate > 70:
             print("✓ EXCELLENT: Most buffers compressed successfully!", file=report)
-        elif compression_rate > 20:
+        elif compression_rate > 40:
             print("⚠ MODERATE: Some buffers compressed well.", file=report)
         else:
             print("✗ POOR: Few buffers compressed successfully.", file=report)
         print(file=report)
         
-        if size_reduction > 50:
+        if size_reduction > 40:
             print(f"✓ Compression saved {size_reduction:.1f}% - significant memory reduction!", file=report)
         elif size_reduction > 20:
             print(f"⚠ Compression saved {size_reduction:.1f}% - moderate memory reduction.", file=report)
