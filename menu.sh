@@ -16,7 +16,7 @@ while true; do
     echo "1. Compress example"
     echo "2. Compress SPEC fprate"
     echo "3. Compress SPEC app"
-    echo "4. Compress generic app"
+    echo "4. Compress generic app (absolute path must start with /usr)"
     echo "5. Run bash"
     echo "6. Exit"
 
