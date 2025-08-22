@@ -680,6 +680,8 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
                                         # Don't add to failed_files for retry, add directly to results
                                         results.append(result[:3])
                                         print(f"[compress] Unrecoverable error for {file}: {result[2]}")
+                                        with open(status_log, "a") as log:
+                                            log.write(f"[compress] Unrecoverable error for {file}: {result[2]}\n")
                                     else:
                                         failed_files.append((result[0], 0, False))
                                 newly_completed.append(idx)
@@ -735,6 +737,8 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
     # Retry failed files with reduced parallelism or sequentially
     while failed_files and any(retry_count < max_retries and not is_unrec for _, retry_count, is_unrec in failed_files):
         print(f"[compress] Retrying {len(failed_files)} failed files...")
+        with open(status_log, "a") as log:
+            log.write(f"[compress] Retrying {len(failed_files)} failed files...\n")
         new_failed = []
         
         for file, retry_count, is_unrecoverable in failed_files:
@@ -759,6 +763,8 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
             mem_percent = get_memory_percent()
             if mem_percent > 85:
                 print(f"[compress] Memory at {mem_percent:.1f}%, waiting before retry...")
+                with open(status_log, "a") as log:
+                    log.write(f"[compress] Memory at {mem_percent:.1f}%, waiting before retry...\n")
                 time.sleep(5)
             
             # Try sequential processing for retries
@@ -768,6 +774,8 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
                 if result[1]:  # Success
                     results.append(result[:3])  # Only keep first 3 elements
                     print(f"[compress] Successfully compressed {file} on retry {retry_count + 1}")
+                    with open(status_log, "a") as log:
+                        log.write(f"[compress] Successfully compressed {file} on retry {retry_count + 1}\n")
                 else:
                     # Check if the new failure is unrecoverable
                     is_unrecoverable_now = result[3] if len(result) > 3 else False
@@ -775,6 +783,8 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
                         # Don't retry unrecoverable errors
                         results.append(result[:3])
                         print(f"[compress] Unrecoverable error encountered on retry for {file}: {result[2]}")
+                        with open(status_log, "a") as log:
+                            log.write(f"[compress] Unrecoverable error encountered on retry for {file}: {result[2]}\n")
                     else:
                         # Check if it's an object type file
                         is_object = False
@@ -788,6 +798,8 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
                             results.append((file, False, "Buffers containing objects are not compressible"))
             except Exception as e:
                 print(f"[compress] Retry failed for {file}: {e}")
+                with open(status_log, "a") as log:
+                    log.write(f"[compress] Retry failed for {file}: {e}\n")
                 # Don't retry object type .stores files
                 is_object = False
                 if file.name.endswith('.stores'):
@@ -848,6 +860,9 @@ if __name__ == "__main__":
                 # Check if sequential processing is requested
                 if args.sequential:
                     print(f"[compress] Sequential processing of {len(files_to_compress)} files")
+                    status_log = Path("/tmp/memlog_parser_status.log")
+                    with open(status_log, "a") as log:
+                        log.write(f"[compress] Sequential processing of {len(files_to_compress)} files\n")
                     results = []
                     for idx, file in enumerate(files_to_compress):
                         if (idx + 1) % 10 == 0:
