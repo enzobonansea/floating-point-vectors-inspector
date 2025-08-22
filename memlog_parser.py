@@ -584,7 +584,8 @@ def robust_parallel_compress(files_to_compress, num_workers=None):
     Returns list of (file, success, error_msg) tuples.
     """
     if num_workers is None:
-        num_workers = max(1, cpu_count() - 1)  # Leave one core free for system tasks
+        num_workers = max(1, cpu_count() - 1)   # Leave one core free for system tasks
+        num_workers = min(num_workers, 5)       # Cap at 5 workers to avoid excessive disk use
     
     results = []
     failed_files = []  # List of (file, retry_count, is_unrecoverable) tuples
